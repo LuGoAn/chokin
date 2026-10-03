@@ -24,4 +24,10 @@ class MainActivity : FlutterActivity() {
         val eventChannel = EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL)
         eventChannel.setStreamHandler(NotificationEventChannelHandler)
     }
+
+    override fun onResume() {
+        super.onResume()
+        // No Android / HyperOS / MIUI, reestabelece a escuta de notificações sempre que o app volta para primeiro plano
+        NotificationMethodChannelHandler.forceRebind(applicationContext)
+    }
 }

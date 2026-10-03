@@ -23,7 +23,8 @@ abstract class NotificationParser {
     'transferência enviada', 'transferência recebida', 'transferencia enviada', 'transferencia recebida',
     'recebeu um pix', 'enviou um pix', 'você pagou', 'voce pagou', 'você recebeu', 'voce recebeu',
     'débito', 'debito', 'crédito', 'credito', 'aprovada', 'aprovado', 'transação', 'transacao',
-    'saque', 'boleto pago', 'recarga realizada', 'compra no cartão', 'compra no cartao'
+    'saque', 'boleto pago', 'recarga realizada', 'compra no cartão', 'compra no cartao',
+    'carteira do google', 'google pay', 'gpay', 'carteira', 'wallet'
   ];
 
   /// Retorna true se o texto contém palavras típicas de promoção, marketing ou avisos
@@ -44,8 +45,9 @@ abstract class NotificationParser {
     final lower = text.toLowerCase();
     final hasTransactionKeyword = transactionKeywords.any((kw) => lower.contains(kw));
     final hasAmount = extractAmount(text) != null;
+    final hasMerchantPattern = RegExp(r'(?:em|no|na|para)\s+[A-Za-z0-9]').hasMatch(lower);
 
-    return hasTransactionKeyword && hasAmount;
+    return (hasTransactionKeyword || hasMerchantPattern) && hasAmount;
   }
 
   /// Extrai valor em reais de strings com formatos comuns (ex: R$ 89,90 ou 89,90 ou BRL 50,00)

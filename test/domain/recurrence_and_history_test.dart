@@ -761,7 +761,7 @@ void main() {
         id: 'tx_rec_salary',
         description: 'Salário Mensal',
         amount: 2000.0,
-        purchaseDate: DateTime(currentYear, currentMonth, 5),
+        purchaseDate: DateTime(currentYear, currentMonth, 1),
         categoryId: 'cat_income',
         type: TransactionType.income,
         paymentMethod: PaymentMethod.pix,

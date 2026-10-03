@@ -19,7 +19,7 @@ void main() {
     test('Default configuration points to LuGoAn/chokin', () {
       expect(UpdateService.repoOwner, equals('LuGoAn'));
       expect(UpdateService.repoName, equals('chokin'));
-      expect(UpdateService.currentVersion, equals('1.0.0'));
+      expect(UpdateService.currentVersion, equals('1.0.1'));
       expect(UpdateService.fallbackGithubToken, isNotEmpty);
     });
 

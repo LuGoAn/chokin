@@ -10,9 +10,10 @@ class MonitoredPackagesManager(context: Context) {
         private const val KEY_PACKAGES = "monitored_packages"
         val DEFAULT_PACKAGES = setOf(
             "com.nu.production",                     // Nubank
+            "com.google.android.apps.walletnfcrel",  // Google Wallet
+            "com.google.android.gms",                // Google Play Services / Google Pay
             "com.samsung.android.spay",              // Samsung Pay
             "com.samsung.android.raja.spay",         // Samsung Wallet
-            "com.google.android.apps.walletnfcrel",  // Google Wallet
             "br.com.bb.android",                     // Banco do Brasil
             "com.itau",                              // Itaú
             "com.itau.personnalite",                 // Itaú Personnalité
@@ -53,6 +54,9 @@ class MonitoredPackagesManager(context: Context) {
                pkg.contains("santander") ||
                pkg.contains("itau") ||
                pkg.contains("bradesco") ||
+               pkg.contains("wallet") ||
+               pkg.contains("google.android.gms") ||
+               pkg.contains("walletnfcrel") ||
                pkg == "android" ||
                pkg.contains("shell") ||
                pkg.contains("notification") ||

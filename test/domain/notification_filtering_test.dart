@@ -4,6 +4,7 @@ import 'package:chokin/domain/notifications/notification_bridge_service.dart';
 import 'package:chokin/domain/notifications/parsers/notification_parser.dart';
 import 'package:chokin/domain/notifications/parsers/nubank_parser.dart';
 import 'package:chokin/domain/notifications/parsers/generic_bank_parser.dart';
+import 'package:chokin/domain/notifications/parsers/google_wallet_parser.dart';
 
 void main() {
   group('Notification Anti-Promo & Financial Transaction Filtering Tests', () {
@@ -173,6 +174,54 @@ void main() {
       expect(draft!.amount, equals(9.80));
       expect(draft.merchant, equals('CANTINA DONA AMELIA'));
       expect(draft.paymentMethod, equals('creditCard'));
+    });
+
+    test('Google Wallet / Carteira do Google: contactless payment is parsed correctly', () {
+      final payload = RawNotificationPayload(
+        id: 'n_wallet_1',
+        packageName: 'com.google.android.apps.walletnfcrel',
+        appName: 'Carteira do Google',
+        rawTitle: 'Carteira do Google',
+        rawText: 'R\$ 38,50 em Padaria Bella',
+        timestamp: DateTime.now(),
+      );
+
+      final walletParser = GoogleWalletParser();
+      expect(walletParser.canHandle(payload), isTrue);
+
+      final draft = walletParser.parse(payload);
+      expect(draft, isNotNull);
+      expect(draft!.amount, equals(38.50));
+      expect(draft.merchant, equals('Padaria Bella'));
+      expect(draft.sourceApp, equals('Google Wallet'));
+
+      final inboxItem = bridge.processRawNotification(payload);
+      expect(inboxItem, isNotNull);
+      expect(inboxItem!.parsedAmount, equals(38.50));
+      expect(inboxItem.parsedMerchant, equals('Padaria Bella'));
+    });
+
+    test('Google Wallet: contactless payment via Google Play Services (com.google.android.gms)', () {
+      final payload = RawNotificationPayload(
+        id: 'n_wallet_gms',
+        packageName: 'com.google.android.gms',
+        appName: 'Google Wallet',
+        rawTitle: 'Google Pay',
+        rawText: 'Você pagou R\$ 15,20 para Drogaria São Paulo',
+        timestamp: DateTime.now(),
+      );
+
+      final walletParser = GoogleWalletParser();
+      expect(walletParser.canHandle(payload), isTrue);
+
+      final draft = walletParser.parse(payload);
+      expect(draft, isNotNull);
+      expect(draft!.amount, equals(15.20));
+      expect(draft.merchant, equals('Drogaria São Paulo'));
+
+      final inboxItem = bridge.processRawNotification(payload);
+      expect(inboxItem, isNotNull);
+      expect(inboxItem!.parsedAmount, equals(15.20));
     });
   });
 }

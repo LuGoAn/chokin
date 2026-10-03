@@ -1,6 +1,7 @@
 package com.chokin.app.notifications
 
 import android.app.Notification
+import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.chokin.app.channel.NotificationEventChannelHandler
@@ -15,6 +16,21 @@ class ChokinNotificationListenerService : NotificationListenerService() {
         super.onCreate()
         dbHelper = NativeBufferDatabaseHelper(applicationContext)
         monitoredManager = MonitoredPackagesManager(applicationContext)
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        // No Android 7.0+ (Nougat em diante), tenta auto-rebind caso desconectado pelo SO (como ocorre no HyperOS/MIUI)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            try {
+                val cn = ComponentName(this, ChokinNotificationListenerService::class.java)
+                requestRebind(cn)
+            } catch (_: Exception) {}
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -93,33 +109,39 @@ class ChokinNotificationListenerService : NotificationListenerService() {
             }
         }
 
-        // Deve conter indicação de transação financeira
+        // Deve conter indicação de transação financeira ou menção a carteiras digitais
         val transactionKeywords = listOf(
             "compra", "pagou", "pago", "pagamento", "pix", "transferência", "transferencia",
             "recebeu", "recebido", "débito", "debito", "crédito", "credito", "aprovada",
-            "aprovado", "transação", "transacao", "saque", "boleto"
+            "aprovado", "transação", "transacao", "saque", "boleto", "carteira", "wallet",
+            "google pay", "gpay"
         )
 
         val hasTransactionKeyword = transactionKeywords.any { full.contains(it) }
-        if (!hasTransactionKeyword) return false
+        val hasMerchantPattern = Regex("""(em|no|na|para)\s+[a-z0-9]""").containsMatchIn(full)
 
         // Deve conter padrão numérico de moeda (ex: R$ 50,00 ou 50,00 ou R$50)
         val hasAmount = full.contains("r$") || full.contains("brl") || Regex("""\d+([.,]\d{2})""").containsMatchIn(full)
 
-        return hasAmount
+        return (hasTransactionKeyword || hasMerchantPattern) && hasAmount
     }
 
     private fun getApplicationName(packageName: String): String {
         return try {
             val pm = applicationContext.packageManager
             val ai = pm.getApplicationInfo(packageName, 0)
-            pm.getApplicationLabel(ai).toString()
+            val label = pm.getApplicationLabel(ai).toString()
+            if (packageName == "com.google.android.gms") {
+                "Google Wallet"
+            } else {
+                label
+            }
         } catch (e: Exception) {
             val lower = packageName.lowercase()
             when {
                 lower.contains("nu.production") || lower.contains("nubank") -> "Nubank"
+                lower.contains("walletnfcrel") || lower.contains("google.android.gms") || lower.contains("wallet") -> "Google Wallet"
                 lower.contains("spay") || lower.contains("samsung") -> "Samsung Pay"
-                lower.contains("walletnfcrel") -> "Google Wallet"
                 lower.contains("bb.android") -> "Banco do Brasil"
                 lower.contains("itau") -> "Itaú"
                 lower.contains("santander") -> "Santander"

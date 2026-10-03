@@ -121,6 +121,7 @@ class FinancialStateNotifier extends ChangeNotifier {
 
   /// Sincroniza notificações acumuladas no banco de dados nativo do Android
   Future<int> syncPendingNotifications() async {
+    await notificationBridge.rebindService();
     final pendingFromNative = await notificationBridge.fetchPendingNotificationsFromNative();
     for (final notif in pendingFromNative) {
       await _handleIncomingNotification(notif);

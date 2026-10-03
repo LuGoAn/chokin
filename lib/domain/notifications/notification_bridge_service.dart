@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../entities/inbox_notification.dart';
 import 'notification_payload.dart';
 import 'parsers/generic_bank_parser.dart';
+import 'parsers/google_wallet_parser.dart';
 import 'parsers/notification_parser.dart';
 import 'parsers/nubank_parser.dart';
 import 'parsers/samsung_pay_parser.dart';
@@ -15,6 +16,7 @@ class NotificationBridgeService {
 
   final List<NotificationParser> _parsers = [
     NubankParser(),
+    GoogleWalletParser(),
     SamsungPayParser(),
     GenericBankParser(),
   ];
@@ -134,6 +136,15 @@ class NotificationBridgeService {
   Future<void> openPermissionSettings() async {
     try {
       await _methodChannel.invokeMethod('openPermissionSettings');
+    } catch (e) {
+      // Ignora erro
+    }
+  }
+
+  /// Abre a tela de Informações do App no sistema operacional (para ajustar Início Automático e Bateria no HyperOS/Xiaomi)
+  Future<void> openAppSettings() async {
+    try {
+      await _methodChannel.invokeMethod('openAppSettings');
     } catch (e) {
       // Ignora erro
     }

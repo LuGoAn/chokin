@@ -1,9 +1,10 @@
 package com.chokin.app.channel
 
-import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.provider.Settings
 import com.chokin.app.notifications.ChokinNotificationListenerService
 import com.chokin.app.notifications.MonitoredPackagesManager
@@ -14,6 +15,23 @@ import io.flutter.plugin.common.MethodChannel
 class NotificationMethodChannelHandler(private val context: Context) : MethodChannel.MethodCallHandler {
     private val dbHelper = NativeBufferDatabaseHelper(context)
     private val monitoredManager = MonitoredPackagesManager(context)
+
+    companion object {
+        /// Força o Android / HyperOS / MIUI a reestabelecer o binding do NotificationListenerService
+        fun forceRebind(context: Context) {
+            try {
+                val cn = ComponentName(context, ChokinNotificationListenerService::class.java)
+                val pm = context.packageManager
+                // Alterna temporariamente o status do componente para forçar o NotificationManagerService
+                // a recriar a conexão IPC do listener caso tenha sido desconectada pelo sistema
+                pm.setComponentEnabledSetting(cn, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+                pm.setComponentEnabledSetting(cn, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    android.service.notification.NotificationListenerService.requestRebind(cn)
+                }
+            } catch (_: Exception) {}
+        }
+    }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -36,19 +54,15 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
             }
             "checkPermission" -> {
                 val isGranted = isNotificationServiceEnabled()
-                if (isGranted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                    try {
-                        val cn = ComponentName(context, ChokinNotificationListenerService::class.java)
-                        android.service.notification.NotificationListenerService.requestRebind(cn)
-                    } catch (_: Exception) {}
+                if (isGranted) {
+                    forceRebind(context)
                 }
                 result.success(isGranted)
             }
             "rebindService" -> {
                 try {
-                    if (isNotificationServiceEnabled() && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                        val cn = ComponentName(context, ChokinNotificationListenerService::class.java)
-                        android.service.notification.NotificationListenerService.requestRebind(cn)
+                    if (isNotificationServiceEnabled()) {
+                        forceRebind(context)
                     }
                     result.success(true)
                 } catch (e: Exception) {
@@ -58,6 +72,18 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
             "openPermissionSettings" -> {
                 try {
                     val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.error("INTENT_ERROR", e.message, null)
+                }
+            }
+            "openAppSettings" -> {
+                try {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", context.packageName, null)
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
                     context.startActivity(intent)
@@ -78,7 +104,7 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
                 val url = call.argument<String>("url")
                 if (url != null) {
                     try {
-                        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK
                         }
                         context.startActivity(intent)

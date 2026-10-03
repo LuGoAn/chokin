@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
@@ -161,7 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                         children: [
                           Text('Leitura de Notificações', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textPrimary)),
                           SizedBox(height: 2),
-                          Text('Captura compras de Nubank, Samsung Pay, etc.', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                          Text('Captura compras de Nubank, Carteira do Google, etc.', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
                         ],
                       ),
                     ),
@@ -183,21 +185,68 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   ],
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      await widget.notifier.notificationBridge.openPermissionSettings();
-                      await Future.delayed(const Duration(seconds: 1));
-                      _checkPermission();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.surfaceLight,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          await widget.notifier.notificationBridge.openPermissionSettings();
+                          await Future.delayed(const Duration(seconds: 1));
+                          _checkPermission();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.surfaceLight,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                        ),
+                        child: Text(
+                          _notificationAccessGranted ? 'Revisar Permissões' : 'Conceder Permissão',
+                          style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+                        ),
+                      ),
                     ),
-                    child: Text(
-                      _notificationAccessGranted ? 'Revisar Permissões no Android' : 'Conceder Permissão no Android',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.sync, size: 16),
+                        label: const Text('Reconectar', style: TextStyle(fontSize: 12)),
+                        onPressed: () async {
+                          await widget.notifier.notificationBridge.rebindService();
+                          _checkPermission();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Leitor de notificações reconectado com sucesso!')),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                InkWell(
+                  onTap: _showXiaomiPocoGuideDialog,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.phone_android, size: 16, color: AppColors.primaryLight),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Instruções para Xiaomi, Poco e Redmi (HyperOS)',
+                            style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, size: 16, color: AppColors.primaryLight),
+                      ],
                     ),
                   ),
                 ),
@@ -399,19 +448,43 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           ),
           actions: [
             TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Fechar')),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.save_alt, size: 16),
-              label: const Text('Salvar Arquivo .JSON'),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.folder_open, size: 16),
+              label: const Text('Escolher Pasta & Salvar'),
               onPressed: () async {
-                final file = await widget.notifier.backupService.saveBackupToFile();
+                final now = DateTime.now();
+                final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+                final defaultFileName = 'chokin_backup_$dateStr.json';
+                final bytes = Uint8List.fromList(utf8.encode(json));
+
+                // Salva uma cópia de segurança no diretório interno do aplicativo
+                await widget.notifier.backupService.saveBackupToFile(customFileName: defaultFileName);
+
+                // Abre a janela nativa do Android para o usuário escolher o local onde quer salvar
+                final resultUri = await FilePicker.saveFile(
+                  dialogTitle: 'Escolha onde deseja salvar o backup do Chokin',
+                  fileName: defaultFileName,
+                  bytes: bytes,
+                  mimeType: 'application/json',
+                );
+
                 if (ctx.mounted) Navigator.of(ctx).pop();
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      duration: const Duration(seconds: 4),
-                      content: Text('Backup salvo com sucesso em:\n${file.path}'),
-                    ),
-                  );
+                  if (resultUri != null) {
+                    final displayPath = resultUri.path.isNotEmpty ? resultUri.path : resultUri.toString();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        duration: const Duration(seconds: 4),
+                        content: Text('Backup salvo com sucesso em:\n$displayPath'),
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Cópia interna mantida em ChokinBackups.'),
+                      ),
+                    );
+                  }
                 }
               },
             ),
@@ -601,20 +674,39 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   },
                 ),
                 ElevatedButton.icon(
-                  icon: const Icon(Icons.save_alt, size: 16),
-                  label: const Text('Salvar Arquivo'),
+                  icon: const Icon(Icons.folder_open, size: 16),
+                  label: const Text('Escolher Pasta & Salvar'),
                   onPressed: () async {
                     final csv = _generateCsvString(selectedScope, selectedMonth, selectedYear, startDate, endDate);
                     final fileName = _buildCsvFileName(selectedScope, selectedMonth, selectedYear, startDate, endDate);
-                    final file = await widget.notifier.backupService.saveExportFile(fileName, csv);
+                    final bytes = Uint8List.fromList(utf8.encode(csv));
+
+                    // Salva cópia local interna
+                    await widget.notifier.backupService.saveExportFile(fileName, csv);
+
+                    // Abre a janela nativa do Android para o usuário escolher a pasta de destino
+                    final resultUri = await FilePicker.saveFile(
+                      dialogTitle: 'Escolha onde deseja salvar a planilha CSV',
+                      fileName: fileName,
+                      bytes: bytes,
+                      mimeType: 'text/csv',
+                    );
+
                     if (ctx.mounted) Navigator.of(ctx).pop();
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          duration: const Duration(seconds: 4),
-                          content: Text('Planilha salva com sucesso em:\n${file.path}'),
-                        ),
-                      );
+                      if (resultUri != null) {
+                        final displayPath = resultUri.path.isNotEmpty ? resultUri.path : resultUri.toString();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            duration: const Duration(seconds: 4),
+                            content: Text('Planilha salva com sucesso em:\n$displayPath'),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Cópia interna da planilha salva em ChokinBackups.')),
+                        );
+                      }
                     }
                   },
                 ),
@@ -792,34 +884,123 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     showDialog(
       context: context,
       builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              backgroundColor: AppColors.surface,
+              title: const Text('Restaurar Backup (JSON)', style: TextStyle(color: AppColors.textPrimary)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.file_open_outlined, color: AppColors.primary),
+                      label: const Text('Selecionar Arquivo .JSON do Celular'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () async {
+                        final file = await FilePicker.pickFile(
+                          type: FileType.custom,
+                          allowedExtensions: ['json'],
+                        );
+                        if (file != null && file.path != null) {
+                          final content = await File(file.path!).readAsString();
+                          if (content.isNotEmpty) {
+                            setModalState(() {
+                              jsonCtrl.text = content;
+                            });
+                          }
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Ou cole o conteúdo JSON abaixo:', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: jsonCtrl,
+                      maxLines: 6,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                      decoration: const InputDecoration(
+                        labelText: 'Conteúdo JSON do backup',
+                        hintText: '{\n  "version": 1,\n  "tables": { ... }\n}',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+                ElevatedButton(
+                  onPressed: () async {
+                    final content = jsonCtrl.text.trim();
+                    if (content.isNotEmpty) {
+                      final success = await widget.notifier.importBackup(content);
+                      if (ctx.mounted) Navigator.of(ctx).pop();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(success ? 'Backup restaurado com sucesso!' : 'Erro ao restaurar backup. Verifique o formato do JSON.')),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Restaurar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showXiaomiPocoGuideDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) {
         return AlertDialog(
           backgroundColor: AppColors.surface,
-          title: const Text('Restaurar Backup (JSON)', style: TextStyle(color: AppColors.textPrimary)),
-          content: TextField(
-            controller: jsonCtrl,
-            maxLines: 8,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-            decoration: const InputDecoration(
-              labelText: 'Cole o conteúdo JSON do backup aqui',
-              hintText: '{\n  "version": 1,\n  "tables": { ... }\n}',
+          title: const Row(
+            children: [
+              Icon(Icons.phone_android, color: AppColors.primary),
+              SizedBox(width: 8),
+              Text('Xiaomi, Poco & HyperOS', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            ],
+          ),
+          content: const SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'No HyperOS / MIUI, o sistema encerra processos em segundo plano para economizar bateria. Para o Chokin ler notificações continuamente:',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                SizedBox(height: 12),
+                Text('1. Início Automático (Autostart):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text('Abra as Informações do App do Chokin e ATIVE a opção "Início automático".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                SizedBox(height: 8),
+                Text('2. Economia de Bateria:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text('Em Economia de Bateria do app, selecione "Sem restrições".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                SizedBox(height: 8),
+                Text('3. Configurações Restritas (se aparecer):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text('Se o Android exibir aviso de recurso restrito ao conceder a permissão de notificações, abra as Informações do App, toque nos 3 pontinhos no topo da tela e selecione "Permitir configurações restritas".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-            ElevatedButton(
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Fechar'),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.settings, size: 16),
+              label: const Text('Abrir Configurações do App'),
               onPressed: () async {
-                final content = jsonCtrl.text.trim();
-                if (content.isNotEmpty) {
-                  final success = await widget.notifier.importBackup(content);
-                  if (ctx.mounted) Navigator.of(ctx).pop();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(success ? 'Backup restaurado com sucesso!' : 'Erro ao restaurar backup. Verifique o formato do JSON.')),
-                    );
-                  }
-                }
+                Navigator.of(ctx).pop();
+                await widget.notifier.notificationBridge.openAppSettings();
               },
-              child: const Text('Restaurar'),
             ),
           ],
         );
