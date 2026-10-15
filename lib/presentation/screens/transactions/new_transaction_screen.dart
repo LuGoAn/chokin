@@ -529,17 +529,20 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
-            // Botão Salvar
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _saveTransaction,
-                child: const Text('Confirmar Lançamento', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _saveTransaction,
+              child: const Text('Confirmar Lançamento', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ),
         ),
       ),
     );

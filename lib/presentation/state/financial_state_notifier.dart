@@ -129,6 +129,14 @@ class FinancialStateNotifier extends ChangeNotifier {
     return pendingFromNative.length;
   }
 
+  /// Dispara uma notificação de teste simulada para validação do usuário
+  Future<void> simulateTestNotification() async {
+    final item = await notificationBridge.simulateTestNotification();
+    if (item != null) {
+      await _handleIncomingNotification(item);
+    }
+  }
+
   Future<void> changePeriod(int month, int year) async {
     _selectedMonth = month;
     _selectedYear = year;

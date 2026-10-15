@@ -223,6 +223,22 @@ void main() {
       expect(inboxItem, isNotNull);
       expect(inboxItem!.parsedAmount, equals(15.20));
     });
+
+    test('NotificationParser.extractAmount supports comma, dot, and plain integer amounts', () {
+      expect(NotificationParser.extractAmount('R\$ 125,50 em Loja'), equals(125.50));
+      expect(NotificationParser.extractAmount('R\$ 38.50 em Padaria'), equals(38.50));
+      expect(NotificationParser.extractAmount('BRL 99,00 aprovado'), equals(99.00));
+      expect(NotificationParser.extractAmount('R\$ 1.250,00 no Pix'), equals(1250.00));
+      expect(NotificationParser.extractAmount('Você pagou R\$ 50 no débito'), equals(50.00));
+    });
+
+    test('simulateTestNotification creates a valid pending Inbox item for Google Wallet', () async {
+      final item = await bridge.simulateTestNotification();
+      expect(item, isNotNull);
+      expect(item!.parsedAmount, equals(25.50));
+      expect(item.parsedMerchant, equals('Supermercado Teste'));
+      expect(item.appName, equals('Carteira do Google'));
+    });
   });
 }
 

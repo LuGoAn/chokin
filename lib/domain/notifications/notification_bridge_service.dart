@@ -132,6 +132,38 @@ class NotificationBridgeService {
     }
   }
 
+  /// Verifica se o serviço nativo do Kotlin está ativamente conectado pelo sistema operacional
+  Future<bool> isServiceConnected() async {
+    try {
+      final bool? connected = await _methodChannel.invokeMethod('isServiceConnected');
+      return connected ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Simula uma notificação para testes de integridade da Inbox
+  Future<InboxNotification?> simulateTestNotification({
+    String appName = 'Carteira do Google',
+    String packageName = 'com.google.android.apps.walletnfcrel',
+    String rawTitle = 'Carteira do Google',
+    String rawText = 'R\$ 25,50 em Supermercado Teste',
+  }) async {
+    final payload = RawNotificationPayload(
+      id: _uuid.v4(),
+      packageName: packageName,
+      appName: appName,
+      rawTitle: rawTitle,
+      rawText: rawText,
+      timestamp: DateTime.now(),
+    );
+    final inboxItem = processRawNotification(payload);
+    if (inboxItem != null) {
+      _onNotificationReceived.add(inboxItem);
+    }
+    return inboxItem;
+  }
+
   /// Abre a tela do sistema operacional para concessão de permissão de acesso a notificações
   Future<void> openPermissionSettings() async {
     try {

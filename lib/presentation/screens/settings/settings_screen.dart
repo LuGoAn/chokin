@@ -25,6 +25,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
   bool _notificationAccessGranted = false;
+  bool _serviceConnected = false;
   AutoBackupFrequency _autoBackupFreq = AutoBackupFrequency.disabled;
   DateTime? _lastAutoBackupDate;
   String? _backupDirPath;
@@ -80,8 +81,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   Future<void> _checkPermission() async {
     final granted = await widget.notifier.notificationBridge.checkPermission();
+    final connected = await widget.notifier.notificationBridge.isServiceConnected();
     if (mounted) {
-      setState(() => _notificationAccessGranted = granted);
+      setState(() {
+        _notificationAccessGranted = granted;
+        _serviceConnected = connected;
+      });
     }
   }
 
@@ -157,26 +162,40 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Leitura de Notificações', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textPrimary)),
-                          SizedBox(height: 2),
-                          Text('Captura compras de Nubank, Carteira do Google, etc.', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                          const Text('Leitura de Notificações', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textPrimary)),
+                          const SizedBox(height: 2),
+                          Text(
+                            !_notificationAccessGranted
+                                ? 'Permissão desativada nas configurações'
+                                : (_serviceConnected
+                                    ? 'Serviço ativo e conectado ao Android'
+                                    : 'Permissão concedida (aguardando sistema)'),
+                            style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                          ),
                         ],
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: (_notificationAccessGranted ? AppColors.income : AppColors.expense).withOpacity(0.2),
+                        color: (!_notificationAccessGranted
+                                ? AppColors.expense
+                                : (_serviceConnected ? AppColors.income : Colors.orange))
+                            .withOpacity(0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        _notificationAccessGranted ? 'ATIVO' : 'DESATIVADO',
+                        !_notificationAccessGranted
+                            ? 'DESATIVADO'
+                            : (_serviceConnected ? 'ATIVO (CONECTADO)' : 'AGUARDANDO SO'),
                         style: TextStyle(
-                          color: _notificationAccessGranted ? AppColors.income : AppColors.expense,
+                          color: !_notificationAccessGranted
+                              ? AppColors.expense
+                              : (_serviceConnected ? AppColors.income : Colors.orange),
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
@@ -185,38 +204,58 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   ],
                 ),
                 const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await widget.notifier.notificationBridge.openPermissionSettings();
+                      await Future.delayed(const Duration(seconds: 1));
+                      _checkPermission();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.surfaceLight,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    child: Text(
+                      _notificationAccessGranted ? 'Revisar Permissões no Android' : 'Conceder Permissão de Leitura',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
-                      flex: 3,
-                      child: ElevatedButton(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.sync, size: 15),
+                        label: const Text('Reconectar', style: TextStyle(fontSize: 12)),
                         onPressed: () async {
-                          await widget.notifier.notificationBridge.openPermissionSettings();
-                          await Future.delayed(const Duration(seconds: 1));
-                          _checkPermission();
+                          await widget.notifier.notificationBridge.rebindService();
+                          await _checkPermission();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(_serviceConnected
+                                    ? 'Leitor reconectado com sucesso ao Android!'
+                                    : 'Sinal de reconexão enviado ao sistema.'),
+                              ),
+                            );
+                          }
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.surfaceLight,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                        ),
-                        child: Text(
-                          _notificationAccessGranted ? 'Revisar Permissões' : 'Conceder Permissão',
-                          style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
-                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      flex: 2,
                       child: OutlinedButton.icon(
-                        icon: const Icon(Icons.sync, size: 16),
-                        label: const Text('Reconectar', style: TextStyle(fontSize: 12)),
+                        icon: const Icon(Icons.science_outlined, size: 15),
+                        label: const Text('Testar Inbox', style: TextStyle(fontSize: 12)),
                         onPressed: () async {
-                          await widget.notifier.notificationBridge.rebindService();
-                          _checkPermission();
+                          await widget.notifier.simulateTestNotification();
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Leitor de notificações reconectado com sucesso!')),
+                              const SnackBar(
+                                content: Text('Notificação de teste (R\$ 25,50) enviada! Veja na aba Inbox.'),
+                              ),
                             );
                           }
                         },
@@ -974,18 +1013,24 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'No HyperOS / MIUI, o sistema encerra processos em segundo plano para economizar bateria. Para o Chokin ler notificações continuamente:',
+                  'No Xiaomi HyperOS / MIUI, o sistema encerra agressivamente serviços em segundo plano. Para garantir que o Chokin leia notificações de compras sem falhar:',
                   style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
                 SizedBox(height: 12),
                 Text('1. Início Automático (Autostart):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
-                Text('Abra as Informações do App do Chokin e ATIVE a opção "Início automático".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text('Toque no botão abaixo "Abrir Configurações do App" e ATIVE a chave "Início automático".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 SizedBox(height: 8),
                 Text('2. Economia de Bateria:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
-                Text('Em Economia de Bateria do app, selecione "Sem restrições".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text('Em "Economia de Bateria", altere de Economizador MIUI para "Sem restrições".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 SizedBox(height: 8),
-                Text('3. Configurações Restritas (se aparecer):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
-                Text('Se o Android exibir aviso de recurso restrito ao conceder a permissão de notificações, abra as Informações do App, toque nos 3 pontinhos no topo da tela e selecione "Permitir configurações restritas".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text('3. Travar com Cadeado (Recentes):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text('Abra a tela de aplicativos recentes do seu Poco/Xiaomi, segure o dedo sobre o cartão do Chokin e toque no ícone de CADEADO. Isso impede que a limpeza de memória da Xiaomi mate o aplicativo.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                SizedBox(height: 8),
+                Text('4. Outras Permissões (Pop-up em 2º plano):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text('Nas configurações do app, vá em "Outras permissões" e permita "Exibir janelas pop-up em segundo plano".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                SizedBox(height: 8),
+                Text('5. Configurações Restritas (se a permissão estiver cinza):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text('Se o Android bloquear a permissão de notificações, abra as Informações do App, toque nos 3 pontinhos no canto superior direito e selecione "Permitir configurações restritas".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
               ],
             ),
           ),

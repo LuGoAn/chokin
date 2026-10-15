@@ -33,7 +33,12 @@ class MonitoredPackagesManager(context: Context) {
     }
 
     fun getMonitoredPackages(): Set<String> {
-        return prefs.getStringSet(KEY_PACKAGES, DEFAULT_PACKAGES) ?: DEFAULT_PACKAGES
+        val saved = prefs.getStringSet(KEY_PACKAGES, null)
+        return if (saved != null) {
+            saved + DEFAULT_PACKAGES
+        } else {
+            DEFAULT_PACKAGES
+        }
     }
 
     fun updateMonitoredPackages(packages: Set<String>) {

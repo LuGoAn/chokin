@@ -44,7 +44,7 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const currentVersion = '1.0.1';
+  static const currentVersion = '1.0.2';
   static const repoOwner = 'LuGoAn';
   static const repoName = 'chokin';
   static const fallbackGithubToken = 'REMOVIDO';

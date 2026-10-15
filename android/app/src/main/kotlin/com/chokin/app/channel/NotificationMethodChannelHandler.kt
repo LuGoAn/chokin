@@ -3,9 +3,9 @@ package com.chokin.app.channel
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import com.chokin.app.notifications.ChokinNotificationListenerService
 import com.chokin.app.notifications.MonitoredPackagesManager
 import com.chokin.app.notifications.NativeBufferDatabaseHelper
@@ -17,16 +17,11 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
     private val monitoredManager = MonitoredPackagesManager(context)
 
     companion object {
-        /// Força o Android / HyperOS / MIUI a reestabelecer o binding do NotificationListenerService
+        /// Força o Android / HyperOS / MIUI a reestabelecer o binding do NotificationListenerService sem desativar o componente
         fun forceRebind(context: Context) {
             try {
-                val cn = ComponentName(context, ChokinNotificationListenerService::class.java)
-                val pm = context.packageManager
-                // Alterna temporariamente o status do componente para forçar o NotificationManagerService
-                // a recriar a conexão IPC do listener caso tenha sido desconectada pelo sistema
-                pm.setComponentEnabledSetting(cn, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
-                pm.setComponentEnabledSetting(cn, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    val cn = ComponentName(context, ChokinNotificationListenerService::class.java)
                     android.service.notification.NotificationListenerService.requestRebind(cn)
                 }
             } catch (_: Exception) {}
@@ -58,6 +53,9 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
                     forceRebind(context)
                 }
                 result.success(isGranted)
+            }
+            "isServiceConnected" -> {
+                result.success(ChokinNotificationListenerService.isConnected)
             }
             "rebindService" -> {
                 try {
@@ -121,8 +119,19 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
     }
 
     private fun isNotificationServiceEnabled(): Boolean {
+        try {
+            // Método recomendado AndroidX
+            val enabledPackages = NotificationManagerCompat.getEnabledListenerPackages(context)
+            if (enabledPackages.contains(context.packageName)) {
+                return true
+            }
+        } catch (_: Exception) {}
+
+        // Fallback robusto via Settings.Secure
+        val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: return false
         val cn = ComponentName(context, ChokinNotificationListenerService::class.java)
-        val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
-        return flat != null && flat.contains(cn.flattenToString())
+        return flat.contains(cn.flattenToString()) ||
+               flat.contains(cn.flattenToShortString()) ||
+               flat.contains(context.packageName)
     }
 }
