@@ -26,7 +26,6 @@ class NubankCsvEntry {
 class NubankCsvParser {
   static const _uuid = Uuid();
 
-  /// Analisa o conteúdo em texto do arquivo CSV da fatura do Nubank
   static List<NubankCsvEntry> parseCsv(String csvContent) {
     final lines = csvContent.split(RegExp(r'\r?\n'));
     final entries = <NubankCsvEntry>[];
@@ -38,7 +37,6 @@ class NubankCsvParser {
       final row = _parseCsvLine(line);
       if (row.length < 3) continue;
 
-      // Ignora linha de cabeçalho
       final firstCol = row[0].toLowerCase().trim();
       if (firstCol == 'date' || firstCol == 'data') continue;
 
@@ -56,7 +54,6 @@ class NubankCsvParser {
       final isPayment = lowerTitle.contains('pagamento recebido') || lowerTitle.contains('pagamento de fatura');
       final isRefund = lowerTitle.contains('estorno') || parsedAmount < 0;
 
-      // Extrai parcelas se presentes (ex: "Carajas Construcoes - Parcela 2/10")
       final installmentRegex = RegExp(r'[-–]?\s*Parcela\s+(\d+)\s*/\s*(\d+)', caseSensitive: false);
       final installmentMatch = installmentRegex.firstMatch(title);
 
@@ -70,7 +67,6 @@ class NubankCsvParser {
         merchant = title.replaceAll(installmentRegex, '').trim();
       }
 
-      // Limpeza de prefixos como "Estorno de compra (" ou "Pagamento recebido"
       if (isRefund) {
         merchant = merchant
             .replaceAll(RegExp(r'^Estorno\s+de\s+compra\s*\(\s*', caseSensitive: false), '')
@@ -95,7 +91,6 @@ class NubankCsvParser {
     return entries;
   }
 
-  /// Converte as entradas do CSV em rascunhos de InboxNotification para conferência no Inbox
   static List<InboxNotification> convertToInboxNotifications({
     required List<NubankCsvEntry> entries,
     bool includePayments = false,
@@ -104,7 +99,6 @@ class NubankCsvParser {
 
     for (final entry in entries) {
       if (entry.isPayment && !includePayments) {
-        // Pagamentos de fatura são desconsiderados por padrão como compra no cartão
         continue;
       }
 
@@ -152,7 +146,6 @@ class NubankCsvParser {
       cleaned = cleaned.substring(1).trim();
     }
 
-    // Trata formato brasileiro (1.809,95) para decimal internacional (1809.95)
     cleaned = cleaned.replaceAll('.', '').replaceAll(',', '.');
 
     final val = double.tryParse(cleaned);

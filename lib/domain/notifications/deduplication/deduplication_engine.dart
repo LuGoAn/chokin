@@ -3,7 +3,6 @@ import '../notification_payload.dart';
 import '../../entities/inbox_notification.dart';
 
 class DeduplicationEngine {
-  /// Calcula o score de similaridade (0 a 100) entre duas possíveis transações
   static double calculateSimilarityScore({
     required double? amountA,
     required String? merchantA,
@@ -16,14 +15,12 @@ class DeduplicationEngine {
   }) {
     double score = 0.0;
 
-    // 1. Mesmo valor (+30)
     if (amountA != null && amountB != null) {
       if ((amountA - amountB).abs() < 0.01) {
         score += 30.0;
       }
     }
 
-    // 2. Mesmo estabelecimento ou similar (+20)
     if (merchantA != null && merchantB != null && merchantA.isNotEmpty && merchantB.isNotEmpty) {
       final cleanA = merchantA.toLowerCase().trim();
       final cleanB = merchantB.toLowerCase().trim();
@@ -33,7 +30,6 @@ class DeduplicationEngine {
       } else if (cleanA.contains(cleanB) || cleanB.contains(cleanA)) {
         score += 15.0;
       } else {
-        // Levenshtein distance similarity
         final sim = _stringSimilarity(cleanA, cleanB);
         if (sim >= 0.7) {
           score += 10.0;
@@ -41,7 +37,6 @@ class DeduplicationEngine {
       }
     }
 
-    // 3. Proximidade temporal (+30 se <= 5 min, +20 se <= 30 min, +10 se <= 120 min)
     final diffMinutes = timestampA.difference(timestampB).inMinutes.abs();
     if (diffMinutes <= 5) {
       score += 30.0;
@@ -51,14 +46,12 @@ class DeduplicationEngine {
       score += 10.0;
     }
 
-    // 4. Mesma data calendário (+10)
     if (timestampA.year == timestampB.year &&
         timestampA.month == timestampB.month &&
         timestampA.day == timestampB.day) {
       score += 10.0;
     }
 
-    // 5. Aplicativos diferentes gerando notificação para a mesma compra (ex: Nubank + Samsung Pay: +10)
     if (appA.toLowerCase() != appB.toLowerCase()) {
       score += 10.0;
     }
@@ -66,15 +59,12 @@ class DeduplicationEngine {
     return min(100.0, score);
   }
 
-  /// Processa uma nova notificação contra a lista existente na Inbox
-  /// Retorna ou a InboxNotification atualizada (agrupada) ou uma nova entrada
   static List<InboxNotification> integrateNotification({
     required List<InboxNotification> existingInbox,
     required InboxNotification newNotification,
   }) {
     final result = List<InboxNotification>.from(existingInbox);
 
-    // Procura por duplicata provável na Inbox (Score >= 70)
     int? matchedIndex;
     double highestScore = 0.0;
 
@@ -100,7 +90,6 @@ class DeduplicationEngine {
     }
 
     if (matchedIndex != null) {
-      // Agrupa na mesma transação da Inbox
       final existing = result[matchedIndex];
       final combinedSources = Set<String>.from(existing.detectedSources)
         ..add(existing.appName)
@@ -112,7 +101,6 @@ class DeduplicationEngine {
         detectedSources: combinedSources.toList(),
       );
     } else {
-      // Checa se há score intermediário (40-69) para aviso visual
       double possibleScore = 0.0;
       for (final item in result) {
         if (item.status != InboxStatus.pending) continue;

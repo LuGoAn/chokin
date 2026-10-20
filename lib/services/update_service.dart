@@ -44,18 +44,14 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const currentVersion = '1.0.2';
+  static const currentVersion = '1.1.0';
   static const repoOwner = 'LuGoAn';
   static const repoName = 'chokin';
-  static const fallbackGithubToken = 'REMOVIDO';
 
   final FinancialRepository repository;
 
-  UpdateService({FinancialRepository? repository})
-      : repository = repository ?? FinancialRepository();
+  UpdateService({FinancialRepository? repository}) : repository = repository ?? FinancialRepository();
 
-  /// Compara duas versões em formato semver (ex: "1.0.1" vs "1.0.0").
-  /// Retorna true se a latestVersion for estritamente mais recente que currentVersion.
   static bool isVersionNewer(String latest, String current) {
     final cleanLatest = latest.replaceAll(RegExp(r'^[vV]'), '').trim();
     final cleanCurrent = current.replaceAll(RegExp(r'^[vV]'), '').trim();
@@ -75,23 +71,23 @@ class UpdateService {
     return false;
   }
 
-  /// Recupera o token do GitHub configurado ou o token padrão
   Future<String?> getEffectiveToken() async {
     final stored = await repository.getSetting('github_token');
-    if (stored != null && stored.trim().isNotEmpty) {
-      return stored.trim();
-    }
-    return fallbackGithubToken;
+    return (stored != null && stored.trim().isNotEmpty) ? stored.trim() : null;
   }
 
-  /// Salva um novo token do GitHub nas configurações locais
   Future<void> saveGithubToken(String token) async {
     await repository.setSetting('github_token', token.trim());
   }
 
-  /// Consulta a API do GitHub para verificar se há novas releases do Chokin
   Future<AppUpdateInfo> checkForUpdates({String? customToken}) async {
     final token = customToken ?? await getEffectiveToken();
+    if (token == null || token.isEmpty) {
+      return AppUpdateInfo.error(
+        currentVersion: currentVersion,
+        message: 'Informe um token do GitHub em Ajustes › Token do GitHub para procurar atualizações.',
+      );
+    }
 
     final uri = Uri.parse('https://api.github.com/repos/$repoOwner/$repoName/releases/latest');
 
@@ -104,13 +100,10 @@ class UpdateService {
       request.headers.set('User-Agent', 'ChokinApp/$currentVersion');
       request.headers.set('Accept', 'application/vnd.github.v3+json');
 
-      if (token != null && token.isNotEmpty) {
-        request.headers.set('Authorization', 'Bearer $token');
-      }
+      request.headers.set('Authorization', 'Bearer $token');
 
       final response = await request.close();
 
-      // Registra a data da última checagem
       await repository.setSetting('last_update_check', DateTime.now().toIso8601String());
 
       if (response.statusCode == 200) {
@@ -125,7 +118,6 @@ class UpdateService {
         final publishedAtStr = data['published_at'] as String?;
         final publishedAt = publishedAtStr != null ? DateTime.tryParse(publishedAtStr) : null;
 
-        // Procura pelo asset chokin.apk ou qualquer .apk
         String? apkDownloadUrl;
         final assets = data['assets'] as List<dynamic>?;
         if (assets != null) {

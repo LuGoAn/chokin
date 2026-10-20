@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart' hide Category;
+import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/sumi.dart';
 import '../../../domain/entities/category.dart';
+import '../../widgets/sumi_widgets.dart';
 import '../../state/financial_state_notifier.dart';
 
 class CategoriesManagementScreen extends StatefulWidget {
@@ -58,32 +60,15 @@ class CategoriesManagementScreen extends StatefulWidget {
   State<CategoriesManagementScreen> createState() => _CategoriesManagementScreenState();
 }
 
-class _CategoriesManagementScreenState extends State<CategoriesManagementScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  IconData _getIconData(String iconKey) => CategoriesManagementScreen.getIconData(iconKey);
-  List<Map<String, dynamic>> get _categoryIcons => CategoriesManagementScreen.categoryIcons;
-  List<Map<String, dynamic>> get _categoryColors => CategoriesManagementScreen.categoryColors;
+class _CategoriesManagementScreenState extends State<CategoriesManagementScreen> {
+  bool _showIncome = false;
 
   Color _parseColor(String? hex) {
-    if (hex == null || hex.isEmpty) return const Color(0xFF3B82F6);
     try {
-      return Color(int.parse(hex));
+      return Color(int.parse(hex ?? ''));
     } catch (_) {
       return const Color(0xFF3B82F6);
     }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 
   @override
@@ -91,359 +76,253 @@ class _CategoriesManagementScreenState extends State<CategoriesManagementScreen>
     return ListenableBuilder(
       listenable: widget.notifier,
       builder: (context, _) {
-        final allCategories = widget.notifier.categories;
-        final expenseCategories = allCategories.where((c) => c.isExpense).toList();
-        final incomeCategories = allCategories.where((c) => c.isIncome).toList();
+        final all = widget.notifier.categories;
+        final expense = all.where((c) => c.isExpense).toList();
+        final income = all.where((c) => c.isIncome).toList();
+        final list = _showIncome ? income : expense;
+        final listType = _showIncome ? 'INCOME' : 'EXPENSE';
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Gerenciar Categorias', style: TextStyle(fontWeight: FontWeight.bold)),
-            bottom: TabBar(
-              controller: _tabController,
-              indicatorColor: AppColors.primary,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.textSecondary,
-              tabs: [
-                Tab(
-                  icon: const Icon(Icons.arrow_downward, size: 18),
-                  text: 'Despesas (${expenseCategories.length})',
-                ),
-                Tab(
-                  icon: const Icon(Icons.arrow_upward, size: 18),
-                  text: 'Receitas (${incomeCategories.length})',
-                ),
-              ],
-            ),
-          ),
-          body: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildCategoryList(expenseCategories, 'EXPENSE'),
-              _buildCategoryList(incomeCategories, 'INCOME'),
+            title: const Text('Categorias'),
+            actions: [
+              IconButton(
+                tooltip: 'Nova categoria',
+                icon: const Icon(Icons.add),
+                onPressed: () => _showCategoryDialog(context, defaultType: listType),
+              ),
             ],
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () {
-              final defaultType = _tabController.index == 0 ? 'EXPENSE' : 'INCOME';
-              _showCategoryDialog(context, defaultType: defaultType);
-            },
-            backgroundColor: AppColors.primary,
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text('Nova Categoria', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          body: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 8),
+                child: SegmentedChoice<bool>(
+                  underline: true,
+                  options: [(false, 'Despesas (${expense.length})'), (true, 'Receitas (${income.length})')],
+                  value: _showIncome,
+                  onChanged: (v) => setState(() => _showIncome = v),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: Sumi.gutter, vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.drag_handle, size: 16, color: AppColors.textMuted),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Arraste pela alça para mudar a ordem em que aparecem no lançamento.',
+                        style: Sumi.caption,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(child: _buildCategoryList(context, list, listType)),
+            ],
           ),
         );
       },
     );
   }
 
-  Widget _buildCategoryList(List<Category> list, String listType) {
-    if (list.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.category_outlined, size: 48, color: AppColors.textMuted),
-            const SizedBox(height: 12),
-            Text(
-              'Nenhuma categoria de ${listType == "EXPENSE" ? "despesa" : "receita"} cadastrada.',
-              style: const TextStyle(color: AppColors.textMuted),
-            ),
-          ],
+  Widget _buildCategoryList(BuildContext context, List<Category> list, String listType) {
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(Sumi.gutter, 8, Sumi.gutter, 32),
+      buildDefaultDragHandles: false,
+      itemCount: list.length,
+      footer: Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: () => _showCategoryDialog(context, defaultType: listType),
+            child: Text(listType == 'INCOME' ? 'Nova categoria de receita' : 'Nova categoria de despesa'),
+          ),
         ),
-      );
-    }
-
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: AppColors.surface.withValues(alpha: 0.5),
-          child: const Row(
+      ),
+      onReorder: (oldIndex, newIndex) {
+        if (oldIndex < newIndex) newIndex -= 1;
+        final item = list.removeAt(oldIndex);
+        list.insert(newIndex, item);
+        final all = List<Category>.from(widget.notifier.categories)
+          ..removeWhere((c) => listType == 'EXPENSE' ? c.isExpense : c.isIncome)
+          ..addAll(list);
+        widget.notifier.reorderCategories(all);
+      },
+      itemBuilder: (context, index) {
+        final cat = list[index];
+        return Container(
+          key: ValueKey(cat.id),
+          constraints: const BoxConstraints(minHeight: 56),
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            border: Border(
+              top: const BorderSide(color: AppColors.border),
+              bottom: index == list.length - 1 ? const BorderSide(color: AppColors.border) : BorderSide.none,
+            ),
+          ),
+          child: Row(
             children: [
-              Icon(Icons.drag_indicator, size: 16, color: AppColors.textMuted),
-              SizedBox(width: 8),
-              Text(
-                'Arraste pelo ícone da direita para reordenar a prioridade',
-                style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: _parseColor(cat.colorHex), shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 12),
+              Icon(CategoriesManagementScreen.getIconData(cat.icon), size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(cat.name, style: Sumi.body),
+                    if (cat.type == 'BOTH') const Text('despesa e receita', style: Sumi.caption),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Editar ${cat.name}',
+                icon: const Icon(Icons.edit_outlined, size: 18, color: AppColors.textSecondary),
+                onPressed: () => _showCategoryDialog(context, existingCategory: cat),
+              ),
+              IconButton(
+                tooltip: 'Excluir ${cat.name}',
+                icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.textSecondary),
+                onPressed: () => _confirmDeleteCategory(context, cat),
+              ),
+              ReorderableDragStartListener(
+                index: index,
+                child: const SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(Icons.drag_handle, color: AppColors.textMuted, size: 20, semanticLabel: 'Arrastar'),
+                ),
               ),
             ],
           ),
-        ),
-        Expanded(
-          child: ReorderableListView.builder(
-            padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 80),
-            itemCount: list.length,
-            onReorder: (oldIndex, newIndex) {
-              if (oldIndex < newIndex) {
-                newIndex -= 1;
-              }
-              final item = list.removeAt(oldIndex);
-              list.insert(newIndex, item);
-
-              // Atualiza lista completa respeitando a nova ordem deste tipo
-              final all = List<Category>.from(widget.notifier.categories);
-              all.removeWhere((c) => listType == 'EXPENSE' ? c.isExpense : c.isIncome);
-              all.addAll(list);
-              widget.notifier.reorderCategories(all);
-            },
-            itemBuilder: (context, index) {
-              final cat = list[index];
-              final color = _parseColor(cat.colorHex);
-              final iconData = _getIconData(cat.icon);
-
-              return Container(
-                key: ValueKey(cat.id),
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: color.withValues(alpha: 0.2),
-                    child: Icon(iconData, color: color, size: 20),
-                  ),
-                  title: Text(
-                    cat.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textPrimary),
-                  ),
-                  subtitle: Text(
-                    cat.type == 'BOTH' ? 'Despesa & Receita' : (cat.type == 'INCOME' ? 'Receita' : 'Despesa'),
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, size: 18, color: AppColors.textSecondary),
-                        tooltip: 'Editar',
-                        onPressed: () => _showCategoryDialog(context, existingCategory: cat),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.expense),
-                        tooltip: 'Excluir',
-                        onPressed: () => _confirmDeleteCategory(context, cat),
-                      ),
-                      ReorderableDragStartListener(
-                        index: index,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8),
-                          child: Icon(Icons.drag_handle, color: AppColors.textMuted, size: 20),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 
   void _showCategoryDialog(BuildContext context, {Category? existingCategory, String defaultType = 'EXPENSE'}) {
     final isEditing = existingCategory != null;
     final nameCtrl = TextEditingController(text: existingCategory?.name ?? '');
-    String selectedIcon = existingCategory?.icon ?? (defaultType == 'INCOME' ? 'account_balance_wallet' : 'restaurant');
-    String selectedColorHex = existingCategory?.colorHex ?? (defaultType == 'INCOME' ? '0xFF10B981' : '0xFFEF4444');
-    String selectedType = existingCategory?.type ?? defaultType;
+    var selectedIcon = existingCategory?.icon ?? (defaultType == 'INCOME' ? 'account_balance_wallet' : 'restaurant');
+    var selectedColorHex = existingCategory?.colorHex ?? (defaultType == 'INCOME' ? '0xFF10B981' : '0xFFEF4444');
+    var selectedType = existingCategory?.type ?? defaultType;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final currentColor = _parseColor(selectedColorHex);
-            final currentIcon = _getIconData(selectedIcon);
-
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-              ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: SafeArea(
               child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          isEditing ? 'Editar Categoria' : 'Nova Categoria',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, color: AppColors.textMuted),
-                          onPressed: () => Navigator.of(ctx).pop(),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Preview Visual da Categoria
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: currentColor.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: currentColor.withValues(alpha: 0.4)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CircleAvatar(
-                              backgroundColor: currentColor,
-                              radius: 18,
-                              child: Icon(currentIcon, color: Colors.white, size: 18),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              nameCtrl.text.isEmpty ? 'Nome da Categoria' : nameCtrl.text,
-                              style: TextStyle(fontWeight: FontWeight.bold, color: currentColor, fontSize: 15),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Nome
+                    Text(isEditing ? 'Editar categoria' : 'Nova categoria',
+                        style: Sumi.bodyStrong.copyWith(fontSize: 18)),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: nameCtrl,
-                      style: const TextStyle(color: AppColors.textPrimary),
-                      decoration: const InputDecoration(
-                        labelText: 'Nome da Categoria',
-                        hintText: 'Ex: Academia, Salário, Jogos...',
-                      ),
-                      onChanged: (val) => setModalState(() {}),
+                      textCapitalization: TextCapitalization.sentences,
+                      style: Sumi.body,
+                      decoration: underlineDecoration('Nome', hint: 'Ex: Academia, Pet, Freelance'),
                     ),
-                    const SizedBox(height: 16),
-
-                    // Tipo de Categoria (Despesa / Receita)
-                    const Text('Aplicável para:', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    const Text('Vale para', style: Sumi.caption),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: InkWell(
-                            onTap: () => setModalState(() => selectedType = 'EXPENSE'),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: selectedType == 'EXPENSE' ? AppColors.expense.withValues(alpha: 0.2) : AppColors.background,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: selectedType == 'EXPENSE' ? AppColors.expense : AppColors.border),
-                              ),
-                              child: Center(
-                                child: Text('Despesa', style: TextStyle(fontWeight: FontWeight.bold, color: selectedType == 'EXPENSE' ? AppColors.expense : AppColors.textSecondary)),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: InkWell(
-                            onTap: () => setModalState(() => selectedType = 'INCOME'),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: selectedType == 'INCOME' ? AppColors.income.withValues(alpha: 0.2) : AppColors.background,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: selectedType == 'INCOME' ? AppColors.income : AppColors.border),
-                              ),
-                              child: Center(
-                                child: Text('Receita', style: TextStyle(fontWeight: FontWeight.bold, color: selectedType == 'INCOME' ? AppColors.income : AppColors.textSecondary)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    SegmentedChoice<String>(
+                      options: const [('EXPENSE', 'Despesa'), ('INCOME', 'Receita'), ('BOTH', 'As duas')],
+                      value: selectedType,
+                      onChanged: (v) => setSheet(() => selectedType = v),
                     ),
-                    const SizedBox(height: 18),
-
-                    // Seletor de Ícone
-                    const Text('Escolha um Ícone', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 120,
-                      child: GridView.builder(
-                        scrollDirection: Axis.horizontal,
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                        ),
-                        itemCount: _categoryIcons.length,
-                        itemBuilder: (context, i) {
-                          final item = _categoryIcons[i];
-                          final key = item['key'] as String;
-                          final icon = item['icon'] as IconData;
-                          final isSelected = selectedIcon == key;
-
-                          return GestureDetector(
-                            onTap: () => setModalState(() => selectedIcon = key),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: isSelected ? currentColor.withValues(alpha: 0.2) : AppColors.background,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: isSelected ? currentColor : AppColors.border, width: isSelected ? 2 : 1),
-                              ),
-                              child: Icon(icon, color: isSelected ? currentColor : AppColors.textSecondary, size: 20),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Seletor de Cores
-                    const Text('Cor da Categoria', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    const Text('Ícone', style: Sumi.caption),
                     const SizedBox(height: 8),
                     Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: _categoryColors.map((colorItem) {
-                        final hex = colorItem['hex'] as String;
-                        final color = colorItem['color'] as Color;
-                        final isSelected = selectedColorHex == hex;
-
-                        return GestureDetector(
-                          onTap: () => setModalState(() => selectedColorHex = hex),
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isSelected ? Colors.white : Colors.transparent,
-                                width: isSelected ? 3 : 1,
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final item in CategoriesManagementScreen.categoryIcons)
+                          Builder(builder: (context) {
+                            final key = item['key'] as String;
+                            final selected = key == selectedIcon;
+                            return Semantics(
+                              button: true,
+                              selected: selected,
+                              label: item['label'] as String,
+                              child: InkWell(
+                                onTap: () => setSheet(() => selectedIcon = key),
+                                borderRadius: BorderRadius.circular(Sumi.radius),
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: selected ? AppColors.textPrimary : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(Sumi.radius),
+                                    border:
+                                        Border.all(color: selected ? AppColors.textPrimary : AppColors.borderStrong),
+                                  ),
+                                  child: Icon(
+                                    item['icon'] as IconData,
+                                    size: 20,
+                                    color: selected ? AppColors.background : AppColors.textSecondary,
+                                  ),
+                                ),
                               ),
-                              boxShadow: isSelected
-                                  ? [BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 6, offset: const Offset(0, 2))]
-                                  : null,
+                            );
+                          }),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('Cor', style: Sumi.caption),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final c in CategoriesManagementScreen.categoryColors)
+                          Semantics(
+                            button: true,
+                            selected: c['hex'] == selectedColorHex,
+                            label: c['name'] as String,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () => setSheet(() => selectedColorHex = c['hex'] as String),
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: c['hex'] == selectedColorHex ? AppColors.textPrimary : Colors.transparent,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: Container(
+                                  width: 22,
+                                  height: 22,
+                                  decoration: BoxDecoration(color: c['color'] as Color, shape: BoxShape.circle),
+                                ),
+                              ),
                             ),
-                            child: isSelected ? const Icon(Icons.check, color: Colors.white, size: 16) : null,
                           ),
-                        );
-                      }).toList(),
+                      ],
                     ),
                     const SizedBox(height: 24),
-
-                    // Botão Salvar
                     SizedBox(
                       width: double.infinity,
+                      height: 52,
                       child: ElevatedButton(
                         onPressed: () async {
                           final name = nameCtrl.text.trim();
@@ -453,10 +332,8 @@ class _CategoriesManagementScreenState extends State<CategoriesManagementScreen>
                             );
                             return;
                           }
-
-                          final catId = existingCategory?.id ?? 'cat_custom_${const Uuid().v4()}';
                           final newCat = Category(
-                            id: catId,
+                            id: existingCategory?.id ?? 'cat_custom_${const Uuid().v4()}',
                             name: name,
                             icon: selectedIcon,
                             colorHex: selectedColorHex,
@@ -464,30 +341,28 @@ class _CategoriesManagementScreenState extends State<CategoriesManagementScreen>
                             isCustom: true,
                             displayOrder: existingCategory?.displayOrder ?? 999,
                           );
-
                           if (isEditing) {
                             await widget.notifier.updateCategory(newCat);
                           } else {
                             await widget.notifier.addCategory(newCat);
                           }
-
                           if (ctx.mounted) Navigator.of(ctx).pop();
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(isEditing ? 'Categoria atualizada!' : 'Categoria criada com sucesso!')),
+                              SnackBar(content: Text(isEditing ? 'Categoria atualizada.' : 'Categoria criada.')),
                             );
                           }
                         },
-                        child: Text(isEditing ? 'Salvar Alterações' : 'Criar Categoria'),
+                        child: Text(isEditing ? 'Salvar alterações' : 'Criar categoria'),
                       ),
                     ),
                   ],
                 ),
               ),
-            );
-          },
-        );
-      },
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -495,16 +370,11 @@ class _CategoriesManagementScreenState extends State<CategoriesManagementScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Excluir Categoria', style: TextStyle(color: AppColors.textPrimary)),
-        content: Text('Tem certeza que deseja excluir a categoria "${category.name}"?', style: const TextStyle(color: AppColors.textSecondary)),
+        title: const Text('Excluir categoria?'),
+        content: Text('A categoria "${category.name}" será excluída. Os lançamentos que a usam continuam no extrato.'),
         actions: [
           TextButton(onPressed: () => Navigator.of(dCtx).pop(false), child: const Text('Cancelar')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.expense),
-            onPressed: () => Navigator.of(dCtx).pop(true),
-            child: const Text('Excluir'),
-          ),
+          ElevatedButton(onPressed: () => Navigator.of(dCtx).pop(true), child: const Text('Excluir')),
         ],
       ),
     );
@@ -512,9 +382,7 @@ class _CategoriesManagementScreenState extends State<CategoriesManagementScreen>
     if (confirm == true) {
       await widget.notifier.deleteCategory(category.id);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Categoria excluída com sucesso!')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Categoria excluída.')));
       }
     }
   }

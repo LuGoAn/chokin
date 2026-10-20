@@ -17,7 +17,6 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
     private val monitoredManager = MonitoredPackagesManager(context)
 
     companion object {
-        /// Força o Android / HyperOS / MIUI a reestabelecer o binding do NotificationListenerService sem desativar o componente
         fun forceRebind(context: Context) {
             try {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
@@ -120,14 +119,12 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
 
     private fun isNotificationServiceEnabled(): Boolean {
         try {
-            // Método recomendado AndroidX
             val enabledPackages = NotificationManagerCompat.getEnabledListenerPackages(context)
             if (enabledPackages.contains(context.packageName)) {
                 return true
             }
         } catch (_: Exception) {}
 
-        // Fallback robusto via Settings.Secure
         val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: return false
         val cn = ComponentName(context, ChokinNotificationListenerService::class.java)
         return flat.contains(cn.flattenToString()) ||

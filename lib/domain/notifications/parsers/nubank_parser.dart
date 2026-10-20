@@ -13,7 +13,6 @@ class NubankParser implements NotificationParser {
   ParsedTransactionDraft? parse(RawNotificationPayload payload) {
     final text = '${payload.rawTitle} ${payload.rawText}'.trim();
 
-    // Filtra avisos, promoções ou notificações sem valor
     if (NotificationParser.isPromotionalOrSpam(text)) {
       return null;
     }
@@ -56,8 +55,6 @@ class NubankParser implements NotificationParser {
       return null;
     }
 
-    // 1. Formato específico do Nubank no corpo da notificação:
-    // "Compra de R$ 9,80 APROVADA em CANTINA DONA AMELIA para o cartão com final 9844."
     final nuApprovedRegex = RegExp(
       r'APROVADA\s+em\s+([A-Za-z0-9\u00C0-\u00FF\s\.\-_]+?)(?:\s+para\s+o\s+cart[aã]o|\s+no\s+cart[aã]o|\s+com\s+final|\.|$)',
       caseSensitive: false,
@@ -68,7 +65,6 @@ class NubankParser implements NotificationParser {
       if (m != null && m.isNotEmpty && !_isGenericPhrase(m)) return _cleanMerchantName(m);
     }
 
-    // 2. Verifica formato "Estabelecimento: ..." no title ou rawText
     final colonRegex = RegExp(r'^([A-Za-z0-9\u00C0-\u00FF\s\.\-_]{3,40}):', caseSensitive: false);
     final colonMatchTitle = colonRegex.firstMatch(title.trim());
     if (colonMatchTitle != null) {
@@ -81,7 +77,6 @@ class NubankParser implements NotificationParser {
       if (m != null && !_isGenericPhrase(m)) return _cleanMerchantName(m);
     }
 
-    // 3. Extrai de títulos com prefixo: "Compra no crédito aprovada PlayStation Store", "Compra aprovada em X"
     final prefixRegex = RegExp(
       r'^(?:Compra\s+no\s+cr[eé]dito\s+aprovada|Compra\s+no\s+d[eé]bito\s+aprovada|Compra\s+aprovada|Compra\s+no\s+cart[aã]o\s+aprovada)\s*(?:em|no|na|:)?\s+([A-Za-z0-9\u00C0-\u00FF\s\.\-_]+?)(?:\s+no\s+valor|\s+de\s+R\$|\s+no\s+cart[aã]o|\.|$)',
       caseSensitive: false,
@@ -92,7 +87,6 @@ class NubankParser implements NotificationParser {
       if (m != null && m.isNotEmpty && !_isGenericPhrase(m)) return _cleanMerchantName(m);
     }
 
-    // 4. Padrão "em / no / na <Estabelecimento>" no texto geral (apenas se não for crédito/débito)
     final cardRegex = RegExp(
       r'(?:em|no|na)\s+([A-Za-z0-9\u00C0-\u00FF\s\.\-_]+?)(?:\s+aprovada|\s+no\s+cart[aã]o|\s+no\s+seu|\s+com\s+sucesso|\s+para\s+o\s+cart[aã]o|\s+de\s+R\$|\.|$)',
       caseSensitive: false,
@@ -103,7 +97,6 @@ class NubankParser implements NotificationParser {
       if (m != null && m.isNotEmpty && !_isGenericPhrase(m)) return _cleanMerchantName(m);
     }
 
-    // 5. Se o título não for frase genérica nem o nome do banco, usa o título limpo
     if (!_isGenericPhrase(title)) {
       return _cleanMerchantName(title);
     }

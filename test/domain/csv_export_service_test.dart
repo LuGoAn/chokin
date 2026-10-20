@@ -13,7 +13,7 @@ void main() {
     final tx1 = FinancialTransaction(
       id: 'tx_1',
       description: 'Supermercado Central',
-      amount: 150.50,
+      amountCents: 15050,
       purchaseDate: DateTime(2026, 9, 10, 14, 0),
       categoryId: 'cat_food',
       type: TransactionType.expense,
@@ -23,7 +23,7 @@ void main() {
     final tx2 = FinancialTransaction(
       id: 'tx_2',
       description: 'Salário Mensal',
-      amount: 4000.00,
+      amountCents: 400000,
       purchaseDate: DateTime(2026, 9, 5, 10, 0),
       categoryId: 'cat_salary',
       type: TransactionType.income,
@@ -33,7 +33,7 @@ void main() {
     final tx3 = FinancialTransaction(
       id: 'tx_3',
       description: 'Restaurante Outubro',
-      amount: 80.00,
+      amountCents: 8000,
       purchaseDate: DateTime(2026, 10, 2, 12, 0),
       categoryId: 'cat_food',
       type: TransactionType.expense,

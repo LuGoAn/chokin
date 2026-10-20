@@ -1,52 +1,65 @@
+import 'dart:math' as math;
+
+import '../../core/utils/money.dart';
+
 class DashboardSummary {
-  final double availableBalance;        // Saldo disponível em conta corrente / dinheiro
-  final double reserveBalance;          // Caixinha / Reserva de emergência
-  final double committedBalance;        // Saldo comprometido com faturas de cartão em aberto
-  final double pendingReimbursements;   // Valor a receber de terceiros devido até o período
-  final double totalPendingReimbursements; // Total geral acumulado a receber de terceiros (todas as cobranças)
-  final double periodIncomes;           // Receitas do período selecionado
-  final double periodPaidExpenses;      // Total de despesas pessoais do período (Pix, dinheiro e cartão de crédito pessoal)
-  final double periodCreditPurchases;   // Compras pessoais no cartão no período
-  final double periodPixExpenses;       // Gastos pessoais via Pix no período
-  final int pendingInboxCount;          // Quantidade de notificações aguardando revisão
+  final int availableCents;
+  final int reserveCents;
+  final int committedCents;
+  final int pendingReimbursementsCents;
+  final int totalPendingReimbursementsCents;
+  final int periodIncomesCents;
+  final int periodPaidExpensesCents;
+  final int periodCreditPurchasesCents;
+  final int periodPixExpensesCents;
+  final int pendingInboxCount;
 
   const DashboardSummary({
-    required this.availableBalance,
-    required this.reserveBalance,
-    required this.committedBalance,
-    required this.pendingReimbursements,
-    this.totalPendingReimbursements = 0.0,
-    required this.periodIncomes,
-    required this.periodPaidExpenses,
-    required this.periodCreditPurchases,
-    required this.periodPixExpenses,
+    required this.availableCents,
+    required this.reserveCents,
+    required this.committedCents,
+    required this.pendingReimbursementsCents,
+    this.totalPendingReimbursementsCents = 0,
+    required this.periodIncomesCents,
+    required this.periodPaidExpensesCents,
+    required this.periodCreditPurchasesCents,
+    required this.periodPixExpensesCents,
     this.pendingInboxCount = 0,
   });
 
-  /// Saldo livre real considerando compromissos futuros do cartão compensados por valores a receber de terceiros
-  double get freeBalance {
-    final personalCommitted = (committedBalance - pendingReimbursements).clamp(0.0, double.infinity);
-    return (availableBalance + reserveBalance) - personalCommitted;
+  int get freeBalanceCents {
+    final personalCommitted = math.max<int>(0, committedCents - pendingReimbursementsCents);
+    return (availableCents + reserveCents) - personalCommitted;
   }
 
-  /// Patrimônio total real do usuário (Dinheiro em conta + Caixinha / Reserva).
-  /// Valores a receber de terceiros NÃO são somados ao patrimônio porque são destinados a pagar as faturas do cartão.
-  double get totalNetWorth => availableBalance + reserveBalance;
+  int get totalNetWorthCents => availableCents + reserveCents;
 
-  /// Sobra ou déficit do período (Receitas - Todos os Gastos pessoais do mês)
-  double get periodNetResult => periodIncomes - periodPaidExpenses;
+  int get periodNetResultCents => periodIncomesCents - periodPaidExpensesCents;
+
+  double get availableBalance => Money.toReais(availableCents);
+  double get reserveBalance => Money.toReais(reserveCents);
+  double get committedBalance => Money.toReais(committedCents);
+  double get pendingReimbursements => Money.toReais(pendingReimbursementsCents);
+  double get totalPendingReimbursements => Money.toReais(totalPendingReimbursementsCents);
+  double get periodIncomes => Money.toReais(periodIncomesCents);
+  double get periodPaidExpenses => Money.toReais(periodPaidExpensesCents);
+  double get periodCreditPurchases => Money.toReais(periodCreditPurchasesCents);
+  double get periodPixExpenses => Money.toReais(periodPixExpensesCents);
+  double get freeBalance => Money.toReais(freeBalanceCents);
+  double get totalNetWorth => Money.toReais(totalNetWorthCents);
+  double get periodNetResult => Money.toReais(periodNetResultCents);
 
   factory DashboardSummary.initial() {
     return const DashboardSummary(
-      availableBalance: 0.0,
-      reserveBalance: 0.0,
-      committedBalance: 0.0,
-      pendingReimbursements: 0.0,
-      totalPendingReimbursements: 0.0,
-      periodIncomes: 0.0,
-      periodPaidExpenses: 0.0,
-      periodCreditPurchases: 0.0,
-      periodPixExpenses: 0.0,
+      availableCents: 0,
+      reserveCents: 0,
+      committedCents: 0,
+      pendingReimbursementsCents: 0,
+      totalPendingReimbursementsCents: 0,
+      periodIncomesCents: 0,
+      periodPaidExpensesCents: 0,
+      periodCreditPurchasesCents: 0,
+      periodPixExpensesCents: 0,
       pendingInboxCount: 0,
     );
   }

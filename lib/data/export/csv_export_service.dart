@@ -28,7 +28,6 @@ class CsvExportOptions {
 }
 
 class CsvExportService {
-  /// Gera o conteúdo CSV formatado para planilhas (Excel, Google Sheets)
   static String generateCsv({
     required FinancialState state,
     List<Category> categories = const [],
@@ -36,19 +35,16 @@ class CsvExportService {
   }) {
     final transactions = _filterTransactions(state.transactions, options);
     
-    // Ordena cronologicamente crescente
     transactions.sort((a, b) => a.purchaseDate.compareTo(b.purchaseDate));
 
     final sb = StringBuffer();
 
-    // Cabeçalho compatível com Excel (delimitador ponto-e-vírgula padrão PT-BR)
     sb.writeln('Data;Mês/Ano;Descrição;Categoria;Tipo;Forma de Pagamento;Parcela;Pessoa;Valor (R\$)');
 
     int? currentMonth;
     int? currentYear;
 
     for (final t in transactions) {
-      // Se estiver exportando múltiplos meses, adiciona uma linha separadora suave por mês
       if (options.scope != CsvExportScope.specificMonth) {
         if (currentMonth != t.purchaseDate.month || currentYear != t.purchaseDate.year) {
           currentMonth = t.purchaseDate.month;

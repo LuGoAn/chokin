@@ -9,26 +9,26 @@ class MonitoredPackagesManager(context: Context) {
     companion object {
         private const val KEY_PACKAGES = "monitored_packages"
         val DEFAULT_PACKAGES = setOf(
-            "com.nu.production",                     // Nubank
-            "com.google.android.apps.walletnfcrel",  // Google Wallet
-            "com.google.android.gms",                // Google Play Services / Google Pay
-            "com.samsung.android.spay",              // Samsung Pay
-            "com.samsung.android.raja.spay",         // Samsung Wallet
-            "br.com.bb.android",                     // Banco do Brasil
-            "com.itau",                              // Itaú
-            "com.itau.personnalite",                 // Itaú Personnalité
-            "com.itau.iti",                          // Iti Itaú
-            "com.santander.app",                     // Santander
-            "br.com.santander.way",                  // Santander Way
-            "br.com.intermedium",                    // Banco Inter
-            "com.c6bank.app",                        // C6 Bank
-            "com.mercadopago.wallet",                // Mercado Pago
-            "com.mercadolibre",                      // Mercado Livre
-            "com.picpay",                            // PicPay
-            "com.bradesco",                          // Bradesco
-            "com.bradesco.cartoes",                  // Bradesco Cartões
-            "br.gov.caixa.tem",                      // Caixa Tem
-            "br.com.gruposbf.caixa"                  // Caixa
+            "com.nu.production",
+            "com.google.android.apps.walletnfcrel",
+            "com.google.android.gms",
+            "com.samsung.android.spay",
+            "com.samsung.android.raja.spay",
+            "br.com.bb.android",
+            "com.itau",
+            "com.itau.personnalite",
+            "com.itau.iti",
+            "com.santander.app",
+            "br.com.santander.way",
+            "br.com.intermedium",
+            "com.c6bank.app",
+            "com.mercadopago.wallet",
+            "com.mercadolibre",
+            "com.picpay",
+            "com.bradesco",
+            "com.bradesco.cartoes",
+            "br.gov.caixa.tem",
+            "br.com.gruposbf.caixa"
         )
     }
 

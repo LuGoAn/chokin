@@ -60,6 +60,15 @@ class FinancialStateNotifier extends ChangeNotifier {
 
   StreamSubscription? _notifSubscription;
 
+  @visibleForTesting
+  void debugSeed(FinancialState state, {List<InboxNotification> inbox = const [], List<Category>? categories}) {
+    _state = state;
+    _inbox = List.of(inbox);
+    if (categories != null) _categories = categories;
+    _isLoading = false;
+    notifyListeners();
+  }
+
   Future<void> initialize() async {
     _isLoading = true;
     notifyListeners();
@@ -68,23 +77,18 @@ class FinancialStateNotifier extends ChangeNotifier {
     _categories = await repository.getCategories();
     _inbox = await repository.getInboxNotifications();
 
-    // Inicializa escuta de notificações
     notificationBridge.initialize();
     _notifSubscription?.cancel();
     _notifSubscription = notificationBridge.onNotificationReceived.listen((newNotif) {
       _handleIncomingNotification(newNotif);
     });
 
-    // Re-vincula o serviço no Android
     await notificationBridge.rebindService();
 
-    // Sincroniza recorrências projetando no mínimo 12 meses à frente
     await syncRecurrencesAhead();
 
-    // Busca notificações pendentes do Kotlin que chegaram com o app fechado
     await syncPendingNotifications();
 
-    // Executa verificação de backup automático periódico
     try {
       await backupService.checkAndRunAutoBackup();
     } catch (_) {}
@@ -92,11 +96,9 @@ class FinancialStateNotifier extends ChangeNotifier {
     _isLoading = false;
     notifyListeners();
 
-    // Executa verificação silenciosa de atualizações no GitHub
     unawaited(checkForUpdates(silent: true));
   }
 
-  /// Sincroniza e projeta recorrências para no mínimo 12 meses à frente ou até o período solicitado
   Future<void> syncRecurrencesAhead({int? upToMonth, int? upToYear}) async {
     final now = DateTime.now();
     final futureHorizon = DateTime(now.year, now.month + 12, 1);
@@ -119,7 +121,6 @@ class FinancialStateNotifier extends ChangeNotifier {
     await repository.persistFinancialState(_state);
   }
 
-  /// Sincroniza notificações acumuladas no banco de dados nativo do Android
   Future<int> syncPendingNotifications() async {
     await notificationBridge.rebindService();
     final pendingFromNative = await notificationBridge.fetchPendingNotificationsFromNative();
@@ -129,7 +130,6 @@ class FinancialStateNotifier extends ChangeNotifier {
     return pendingFromNative.length;
   }
 
-  /// Dispara uma notificação de teste simulada para validação do usuário
   Future<void> simulateTestNotification() async {
     final item = await notificationBridge.simulateTestNotification();
     if (item != null) {
@@ -238,7 +238,7 @@ class FinancialStateNotifier extends ChangeNotifier {
 
   Future<void> refundTransaction({
     required String transactionId,
-    required double refundAmount,
+    required int refundAmountCents,
     required PaymentMethod refundMethod,
     DateTime? refundDate,
     String? notes,
@@ -246,7 +246,7 @@ class FinancialStateNotifier extends ChangeNotifier {
     _state = FinancialMovementEngine.processTransactionRefund(
       currentState: _state,
       transactionId: transactionId,
-      refundAmount: refundAmount,
+      refundAmountCents: refundAmountCents,
       refundMethod: refundMethod,
       refundDate: refundDate,
       notes: notes,
@@ -255,12 +255,12 @@ class FinancialStateNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> payInvoice(String invoiceId, DateTime paymentDate, {double? customAmount}) async {
+  Future<void> payInvoice(String invoiceId, DateTime paymentDate, {int? customAmountCents}) async {
     _state = FinancialMovementEngine.processInvoicePayment(
       currentState: _state,
       invoiceId: invoiceId,
       paymentDate: paymentDate,
-      customAmount: customAmount,
+      customAmountCents: customAmountCents,
     );
     await repository.persistFinancialState(_state);
     notifyListeners();
@@ -268,14 +268,14 @@ class FinancialStateNotifier extends ChangeNotifier {
 
   Future<void> receiveReimbursement({
     required String reimbursementId,
-    required double amount,
+    required int amountCents,
     required DateTime date,
     String? notes,
   }) async {
     _state = FinancialMovementEngine.processReimbursementPayment(
       currentState: _state,
       reimbursementId: reimbursementId,
-      amountReceived: amount,
+      amountReceivedCents: amountCents,
       paymentDate: date,
       notes: notes,
     );
@@ -328,7 +328,7 @@ class FinancialStateNotifier extends ChangeNotifier {
   Future<void> transferSurplusToReserve() async {
     _state = FinancialMovementEngine.transferSurplusToReserve(
       currentState: _state,
-      periodDate: DateTime(_selectedYear, _selectedMonth, 28),
+      periodDate: DateTime.now(),
     );
     await repository.persistFinancialState(_state);
     notifyListeners();
@@ -359,6 +359,12 @@ class FinancialStateNotifier extends ChangeNotifier {
     return count;
   }
 
+  Future<void> markInboxConfirmed(String inboxId) async {
+    await repository.updateInboxStatus(inboxId, InboxStatus.confirmed);
+    _inbox.removeWhere((item) => item.id == inboxId);
+    notifyListeners();
+  }
+
   Future<void> ignoreInboxNotification(String inboxId) async {
     await repository.updateInboxStatus(inboxId, InboxStatus.ignored);
     _inbox.removeWhere((item) => item.id == inboxId);
@@ -384,7 +390,7 @@ class FinancialStateNotifier extends ChangeNotifier {
   }
 
   Future<void> deletePerson(String personId) async {
-    if (personId == 'ME') return; // Protege o usuário principal
+    if (personId == 'ME') return;
     await repository.deletePerson(personId);
     _state = await repository.loadFinancialState();
     notifyListeners();
@@ -400,7 +406,7 @@ class FinancialStateNotifier extends ChangeNotifier {
       _state = FinancialMovementEngine.processReimbursementPayment(
         currentState: _state,
         reimbursementId: r.id,
-        amountReceived: r.remainingAmount,
+        amountReceivedCents: r.remainingAmountCents,
         paymentDate: date,
         notes: notes ?? 'Quitação total de pendências',
       );
@@ -424,14 +430,14 @@ class FinancialStateNotifier extends ChangeNotifier {
         orElse: () => FinancialTransaction(
           id: '',
           description: '',
-          amount: r.totalAmount,
+          amountCents: r.totalAmountCents,
           purchaseDate: r.createdAt,
           categoryId: 'cat_other',
           paymentMethod: PaymentMethod.pix,
         ),
       );
 
-      final amountToPay = FinancialMovementEngine.calculateReimbursementDueForMonth(
+      final amountToPay = FinancialMovementEngine.calculateReimbursementDueForMonthCents(
         transaction: tx,
         reimbursement: r,
         targetMonth: month,
@@ -442,7 +448,7 @@ class FinancialStateNotifier extends ChangeNotifier {
         _state = FinancialMovementEngine.processReimbursementPayment(
           currentState: _state,
           reimbursementId: r.id,
-          amountReceived: amountToPay,
+          amountReceivedCents: amountToPay,
           paymentDate: date,
           notes: notes ?? 'Quitação referente ao mês $month/$year',
         );
@@ -509,12 +515,13 @@ class FinancialStateNotifier extends ChangeNotifier {
     await repository.saveCategoriesOrder(updatedCategories);
   }
 
-  Future<void> setInitialBalances({required double available, double reserve = 0.0}) async {
-    _state = _state.copyWith(
-      availableBalance: double.parse(available.toStringAsFixed(2)),
-      reserveBalance: double.parse(reserve.toStringAsFixed(2)),
+  Future<void> setInitialBalances({required int availableCents, int? reserveCents}) async {
+    _state = FinancialMovementEngine.adjustBalances(
+      currentState: _state,
+      availableCents: availableCents,
+      reserveCents: reserveCents,
     );
-    await repository.setInitialBalances(available: available, reserve: reserve);
+    await repository.persistFinancialState(_state);
     notifyListeners();
   }
 

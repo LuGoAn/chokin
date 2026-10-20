@@ -1,12 +1,16 @@
+import '../../core/utils/money.dart';
+
 enum MovementType {
-  income,                 // Entrada de dinheiro (Salário, Mesada, Pix recebido)
-  expensePaid,            // Saída imediata de dinheiro (Pix, Dinheiro)
-  invoicePayment,         // Saída de dinheiro por pagamento de fatura
-  transferToReserve,      // Transferência automática da sobra para a caixinha
-  reserveCompensation,    // Retirada automática da caixinha para cobrir gastos
-  reimbursementReceived,  // Entrada de dinheiro por reembolso de terceiro
-  refund,                 // Estorno/devolução de compra (total ou parcial)
-  manualAdjustment,       // Ajuste manual de saldo
+  income,
+  expensePaid,
+  invoicePayment,
+  transferToReserve,
+  reserveCompensation,
+  reimbursementReceived,
+  refund,
+  manualAdjustment,
+  reserveAdjustment,
+  cardRefund,
 }
 
 class FinancialMovement {
@@ -15,7 +19,7 @@ class FinancialMovement {
   final String? invoiceId;
   final String? reimbursementId;
   final MovementType type;
-  final double amount;
+  final int amountCents;
   final DateTime movementDate;
   final String description;
 
@@ -25,10 +29,12 @@ class FinancialMovement {
     this.invoiceId,
     this.reimbursementId,
     required this.type,
-    required this.amount,
+    required this.amountCents,
     required this.movementDate,
     required this.description,
   });
+
+  double get amount => Money.toReais(amountCents);
 
   Map<String, dynamic> toMap() {
     return {
@@ -37,7 +43,7 @@ class FinancialMovement {
       'invoiceId': invoiceId,
       'reimbursementId': reimbursementId,
       'type': type.name,
-      'amount': amount,
+      'amountCents': amountCents,
       'movementDate': movementDate.toIso8601String(),
       'description': description,
     };
@@ -51,9 +57,9 @@ class FinancialMovement {
       reimbursementId: map['reimbursementId'] as String?,
       type: MovementType.values.firstWhere(
         (e) => e.name == map['type'],
-        orElse: () => MovementType.manualAdjustment,
+        orElse: () => throw FormatException('Tipo de movimentação desconhecido: ${map['type']}'),
       ),
-      amount: (map['amount'] as num).toDouble(),
+      amountCents: map['amountCents'] as int,
       movementDate: DateTime.parse(map['movementDate'] as String),
       description: map['description'] as String,
     );

@@ -1,9 +1,9 @@
 class Category {
   final String id;
   final String name;
-  final String icon; // Icon identifier
+  final String icon;
   final String colorHex;
-  final String type; // 'INCOME', 'EXPENSE', 'BOTH'
+  final String type;
   final bool isCustom;
   final int displayOrder;
 
@@ -66,7 +66,6 @@ class Category {
 
   static List<Category> defaultCategories() {
     return [
-      // Despesas
       const Category(id: 'cat_food', name: 'Alimentação', icon: 'restaurant', colorHex: '0xFFEF4444', type: 'EXPENSE', displayOrder: 0),
       const Category(id: 'cat_transport', name: 'Transporte', icon: 'directions_car', colorHex: '0xFFF59E0B', type: 'EXPENSE', displayOrder: 1),
       const Category(id: 'cat_home', name: 'Moradia / Casa', icon: 'home', colorHex: '0xFFD97706', type: 'EXPENSE', displayOrder: 2),
@@ -78,7 +77,6 @@ class Category {
       const Category(id: 'cat_clothing', name: 'Roupas & Vestuário', icon: 'checkroom', colorHex: '0xFF64748B', type: 'EXPENSE', displayOrder: 8),
       const Category(id: 'cat_other_expense', name: 'Outras Despesas', icon: 'category', colorHex: '0xFF94A3B8', type: 'EXPENSE', displayOrder: 9),
 
-      // Receitas
       const Category(id: 'cat_salary', name: 'Salário Principal', icon: 'account_balance_wallet', colorHex: '0xFF10B981', type: 'INCOME', displayOrder: 0),
       const Category(id: 'cat_freelance', name: 'Freelance & Serviços', icon: 'work_outline', colorHex: '0xFF3B82F6', type: 'INCOME', displayOrder: 1),
       const Category(id: 'cat_investments', name: 'Rendimentos & Dividendos', icon: 'trending_up', colorHex: '0xFFF59E0B', type: 'INCOME', displayOrder: 2),

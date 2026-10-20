@@ -36,7 +36,6 @@ class ChokinNotificationListenerService : NotificationListenerService() {
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         isConnected = false
-        // No Android 7.0+ (Nougat em diante), tenta auto-rebind caso desconectado pelo SO (como ocorre no HyperOS/MIUI)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             try {
                 val cn = ComponentName(this, ChokinNotificationListenerService::class.java)
@@ -58,7 +57,6 @@ class ChokinNotificationListenerService : NotificationListenerService() {
             ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
             ?: ""
 
-        // Extrai todas as fontes potenciais de texto da notificação (BigTextStyle, InboxStyle, etc.)
         val extraText = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
         val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
         val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
@@ -76,12 +74,10 @@ class ChokinNotificationListenerService : NotificationListenerService() {
 
         val text = textCandidates.joinToString(" ").trim()
 
-        // Ignora notificações vazias ou apenas informativas sem texto
         if (title.isBlank() && text.isBlank()) {
             return
         }
 
-        // Filtra estritamente para apenas salvar se for uma movimentação financeira real com valor
         if (!isFinancialTransaction(title, text, packageName)) {
             return
         }
@@ -101,9 +97,6 @@ class ChokinNotificationListenerService : NotificationListenerService() {
 
         val isFlutterListening = NotificationEventChannelHandler.isListening()
 
-        // Persiste no SQLite nativo buffer sempre como NÃO sincronizado (synced = false)
-        // Isso garante que se o app estiver em segundo plano ou fechado, a notificação nunca é perdida.
-        // Ela só será marcada como synced=1 quando o Flutter enviar o ACK de confirmação de leitura.
         dbHelper.insertNotification(
             id = id,
             packageName = packageName,
@@ -114,7 +107,6 @@ class ChokinNotificationListenerService : NotificationListenerService() {
             synced = false
         )
 
-        // Se o Flutter estiver ativo no momento, emite imediatamente no EventChannel
         if (isFlutterListening) {
             NotificationEventChannelHandler.sendNotification(payload)
         }
@@ -123,7 +115,6 @@ class ChokinNotificationListenerService : NotificationListenerService() {
     private fun isFinancialTransaction(title: String?, text: String?, packageName: String): Boolean {
         val full = ((title ?: "") + " " + (text ?: "")).lowercase()
 
-        // Palavras de promoção/marketing/avisos que devem ser ignoradas
         val promoKeywords = listOf(
             "empréstimo", "emprestimo", "limite aumentou", "aumento de limite", "novo limite",
             "ajuste seu limite", "aumentar seu limite", "cupom", "desconto", "cashback", "ganhe",
@@ -143,11 +134,9 @@ class ChokinNotificationListenerService : NotificationListenerService() {
             }
         }
 
-        // Deve conter padrão numérico de moeda (ex: R$ 50,00 ou R$ 38.50 ou 50,00 ou BRL 20)
         val hasAmount = full.contains("r$") || full.contains("brl") || Regex("""\d+([.,]\d{2})""").containsMatchIn(full)
         if (!hasAmount) return false
 
-        // Se for carteira digital explícita (Google Wallet / Google Pay), qualquer notificação com valor é financeira
         val isDigitalWallet = packageName.contains("wallet") ||
                 packageName.contains("walletnfcrel") ||
                 packageName.contains("google.android.gms") ||
@@ -157,7 +146,6 @@ class ChokinNotificationListenerService : NotificationListenerService() {
                 full.contains("gpay")
         if (isDigitalWallet) return true
 
-        // Deve conter indicação de transação financeira ou menção a compras/pagamentos
         val transactionKeywords = listOf(
             "compra", "pagou", "pago", "pagamento", "pagar", "pix", "transferência", "transferencia",
             "transferiu", "enviou", "enviado", "enviada", "recebeu", "recebido", "recebida",

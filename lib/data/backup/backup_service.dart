@@ -2,7 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import '../database/database_helper.dart';
+import '../database/database_schema.dart';
+import '../database/migration_v6.dart';
 
 enum AutoBackupFrequency {
   disabled,
@@ -19,24 +22,24 @@ class BackupService {
 
   BackupService({DatabaseHelper? dbHelper}) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
+  static const int backupFormatVersion = 2;
+
+  static const Set<String> _privateSettings = {'github_token'};
+
   Future<String> exportBackupToJson() async {
     final db = await dbHelper.database;
 
+    final tables = <String, Object?>{};
+    for (final table in DatabaseSchema.tables.keys) {
+      final rows = await db.query(table);
+      tables[table] = table == 'app_settings' ? rows.where((r) => !_privateSettings.contains(r['key'])).toList() : rows;
+    }
+
     final data = <String, dynamic>{
-      'version': 1,
+      'version': backupFormatVersion,
+      'schemaVersion': DatabaseSchema.version,
       'exportedAt': DateTime.now().toIso8601String(),
-      'tables': {
-        'people': await db.query('people'),
-        'categories': await db.query('categories'),
-        'credit_cards': await db.query('credit_cards'),
-        'invoices': await db.query('invoices'),
-        'transactions': await db.query('transactions'),
-        'installments': await db.query('installments'),
-        'reimbursements': await db.query('reimbursements'),
-        'reimbursement_payments': await db.query('reimbursement_payments'),
-        'financial_movements': await db.query('financial_movements'),
-        'app_settings': await db.query('app_settings'),
-      },
+      'tables': tables,
     };
 
     return const JsonEncoder.withIndent('  ').convert(data);
@@ -45,33 +48,41 @@ class BackupService {
   Future<bool> importBackupFromJson(String jsonString) async {
     try {
       final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
-      final tables = decoded['tables'] as Map<String, dynamic>?;
-      if (tables == null) return false;
+      final rawTables = decoded['tables'] as Map<String, dynamic>?;
+      if (rawTables == null) return false;
+
+      final version = decoded['version'] as int? ?? 1;
+      if (version > backupFormatVersion) return false;
+
+      TableRows tables = {
+        for (final entry in rawTables.entries)
+          if (DatabaseSchema.tables.containsKey(entry.key))
+            entry.key: [
+              for (final row in (entry.value as List<dynamic>? ?? const [])) Map<String, Object?>.from(row as Map),
+            ],
+      };
+      if (version < 2) tables = MigrationV6.migrateTables(tables);
+
+      tables['app_settings']?.removeWhere((r) => _privateSettings.contains(r['key']));
 
       final db = await dbHelper.database;
-
       await db.transaction((txn) async {
-        // Limpa tabelas atuais
-        await txn.delete('reimbursement_payments');
-        await txn.delete('reimbursements');
-        await txn.delete('installments');
-        await txn.delete('transactions');
-        await txn.delete('invoices');
-        await txn.delete('credit_cards');
-        await txn.delete('categories');
-        await txn.delete('people');
-        await txn.delete('financial_movements');
-        await txn.delete('app_settings');
-
-        // Repovoa com os dados do backup
+        final kept = await txn.query(
+          'app_settings',
+          where: 'key IN (${List.filled(_privateSettings.length, '?').join(',')})',
+          whereArgs: _privateSettings.toList(),
+        );
+        for (final table in DatabaseSchema.tables.keys) {
+          if (table == 'inbox_notifications' && !tables.containsKey(table)) continue;
+          await txn.delete(table);
+        }
         for (final entry in tables.entries) {
-          final tableName = entry.key;
-          final rows = entry.value as List<dynamic>?;
-          if (rows != null) {
-            for (final row in rows) {
-              await txn.insert(tableName, Map<String, dynamic>.from(row as Map));
-            }
+          for (final row in entry.value) {
+            await txn.insert(entry.key, row);
           }
+        }
+        for (final row in kept) {
+          await txn.insert('app_settings', row, conflictAlgorithm: ConflictAlgorithm.replace);
         }
       });
 
@@ -81,7 +92,6 @@ class BackupService {
     }
   }
 
-  /// Retorna o diretório local onde os backups são salvos
   Future<Directory> getBackupDirectory() async {
     final baseDir = await getApplicationDocumentsDirectory();
     final backupDir = Directory('${baseDir.path}/ChokinBackups');
@@ -91,7 +101,6 @@ class BackupService {
     return backupDir;
   }
 
-  /// Salva o arquivo de backup localmente na pasta ChokinBackups
   Future<File> saveBackupToFile({String? customFileName}) async {
     final jsonContent = await exportBackupToJson();
     final dir = await getBackupDirectory();
@@ -102,7 +111,6 @@ class BackupService {
     return await file.writeAsString(jsonContent);
   }
 
-  /// Salva um arquivo de texto qualquer (ex: CSV) no diretório de exportações
   Future<File> saveExportFile(String fileName, String content) async {
     final dir = await getBackupDirectory();
     final file = File('${dir.path}/$fileName');
@@ -129,7 +137,6 @@ class BackupService {
     return val != null ? DateTime.tryParse(val) : null;
   }
 
-  /// Executa o backup automático se a frequência selecionada exigir
   Future<bool> checkAndRunAutoBackup() async {
     final freq = await getAutoBackupFrequency();
     if (freq == AutoBackupFrequency.disabled) return false;

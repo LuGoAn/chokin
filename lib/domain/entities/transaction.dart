@@ -1,3 +1,5 @@
+import '../../core/utils/money.dart';
+
 enum PaymentMethod {
   pix,
   creditCard,
@@ -22,13 +24,13 @@ enum RecurrenceFrequency {
 class FinancialTransaction {
   final String id;
   final String description;
-  final double amount;
+  final int amountCents;
   final DateTime purchaseDate;
   final String categoryId;
   final TransactionType type;
   final PaymentMethod paymentMethod;
-  final String personId; // 'ME' ou ID da pessoa responsável
-  final String? cardId;  // Obrigatório se paymentMethod == creditCard
+  final String personId;
+  final String? cardId;
   final int totalInstallments;
   final String? notes;
   final String? sourceNotificationId;
@@ -40,8 +42,7 @@ class FinancialTransaction {
   final List<String> recurrenceExceptions;
   final DateTime? createdAt;
   
-  // Campos de Estorno (Refund)
-  final double refundAmount;
+  final int refundAmountCents;
   final DateTime? refundedAt;
   final PaymentMethod? refundMethod;
   final String? refundNotes;
@@ -49,7 +50,7 @@ class FinancialTransaction {
   const FinancialTransaction({
     required this.id,
     required this.description,
-    required this.amount,
+    required this.amountCents,
     required this.purchaseDate,
     required this.categoryId,
     this.type = TransactionType.expense,
@@ -66,7 +67,7 @@ class FinancialTransaction {
     this.recurrenceEndedAt,
     this.recurrenceExceptions = const [],
     this.createdAt,
-    this.refundAmount = 0.0,
+    this.refundAmountCents = 0,
     this.refundedAt,
     this.refundMethod,
     this.refundNotes,
@@ -79,11 +80,14 @@ class FinancialTransaction {
   DateTime get effectiveCreatedAt => createdAt ?? purchaseDate;
   String get effectiveRecurringGroupId => (recurringGroupId != null && recurringGroupId!.isNotEmpty) ? recurringGroupId! : id;
 
-  // Helpers de Estorno
-  bool get isRefunded => refundAmount > 0;
-  bool get isFullyRefunded => refundAmount >= amount && amount > 0;
-  bool get isPartiallyRefunded => refundAmount > 0 && refundAmount < amount;
-  double get netAmount => (amount - refundAmount).clamp(0.0, double.infinity);
+  bool get isRefunded => refundAmountCents > 0;
+  bool get isFullyRefunded => refundAmountCents >= amountCents && amountCents > 0;
+  bool get isPartiallyRefunded => refundAmountCents > 0 && refundAmountCents < amountCents;
+  int get netAmountCents => (amountCents - refundAmountCents).clamp(0, amountCents);
+
+  double get amount => Money.toReais(amountCents);
+  double get refundAmount => Money.toReais(refundAmountCents);
+  double get netAmount => Money.toReais(netAmountCents);
 
   String get paymentMethodLabel {
     switch (paymentMethod) {
@@ -121,7 +125,7 @@ class FinancialTransaction {
     return {
       'id': id,
       'description': description,
-      'amount': amount,
+      'amountCents': amountCents,
       'purchaseDate': purchaseDate.toIso8601String(),
       'categoryId': categoryId,
       'type': type.name,
@@ -138,7 +142,7 @@ class FinancialTransaction {
       'recurrenceEndedAt': recurrenceEndedAt?.toIso8601String(),
       'recurrenceExceptions': recurrenceExceptions.join(','),
       'createdAt': (createdAt ?? purchaseDate).toIso8601String(),
-      'refundAmount': refundAmount,
+      'refundAmountCents': refundAmountCents,
       'refundedAt': refundedAt?.toIso8601String(),
       'refundMethod': refundMethod?.name,
       'refundNotes': refundNotes,
@@ -149,7 +153,7 @@ class FinancialTransaction {
     return FinancialTransaction(
       id: map['id'] as String,
       description: map['description'] as String,
-      amount: (map['amount'] as num).toDouble(),
+      amountCents: map['amountCents'] as int,
       purchaseDate: DateTime.parse(map['purchaseDate'] as String),
       categoryId: map['categoryId'] as String,
       type: TransactionType.values.firstWhere(
@@ -175,7 +179,7 @@ class FinancialTransaction {
       recurrenceEndedAt: map['recurrenceEndedAt'] != null ? DateTime.parse(map['recurrenceEndedAt'] as String) : null,
       recurrenceExceptions: (map['recurrenceExceptions'] as String?)?.split(',').where((s) => s.isNotEmpty).toList() ?? const [],
       createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt'] as String) : null,
-      refundAmount: (map['refundAmount'] as num?)?.toDouble() ?? 0.0,
+      refundAmountCents: map['refundAmountCents'] as int? ?? 0,
       refundedAt: map['refundedAt'] != null ? DateTime.parse(map['refundedAt'] as String) : null,
       refundMethod: map['refundMethod'] != null
           ? PaymentMethod.values.firstWhere(
@@ -190,7 +194,7 @@ class FinancialTransaction {
   FinancialTransaction copyWith({
     String? id,
     String? description,
-    double? amount,
+    int? amountCents,
     DateTime? purchaseDate,
     String? categoryId,
     TransactionType? type,
@@ -207,7 +211,7 @@ class FinancialTransaction {
     DateTime? recurrenceEndedAt,
     List<String>? recurrenceExceptions,
     DateTime? createdAt,
-    double? refundAmount,
+    int? refundAmountCents,
     DateTime? refundedAt,
     PaymentMethod? refundMethod,
     String? refundNotes,
@@ -215,7 +219,7 @@ class FinancialTransaction {
     return FinancialTransaction(
       id: id ?? this.id,
       description: description ?? this.description,
-      amount: amount ?? this.amount,
+      amountCents: amountCents ?? this.amountCents,
       purchaseDate: purchaseDate ?? this.purchaseDate,
       categoryId: categoryId ?? this.categoryId,
       type: type ?? this.type,
@@ -232,7 +236,7 @@ class FinancialTransaction {
       recurrenceEndedAt: recurrenceEndedAt ?? this.recurrenceEndedAt,
       recurrenceExceptions: recurrenceExceptions ?? this.recurrenceExceptions,
       createdAt: createdAt ?? this.createdAt,
-      refundAmount: refundAmount ?? this.refundAmount,
+      refundAmountCents: refundAmountCents ?? this.refundAmountCents,
       refundedAt: refundedAt ?? this.refundedAt,
       refundMethod: refundMethod ?? this.refundMethod,
       refundNotes: refundNotes ?? this.refundNotes,

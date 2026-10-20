@@ -25,7 +25,6 @@ class NotificationBridgeService {
   final _onNotificationReceived = StreamController<InboxNotification>.broadcast();
   Stream<InboxNotification> get onNotificationReceived => _onNotificationReceived.stream;
 
-  /// Inicia a escuta do EventChannel e processa notificações em tempo real
   void initialize() {
     _eventSubscription?.cancel();
     _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
@@ -36,30 +35,25 @@ class NotificationBridgeService {
           if (inboxItem != null) {
             _onNotificationReceived.add(inboxItem);
           }
-          // Confirma leitura para o Kotlin
           _methodChannel.invokeMethod('ackNotification', {
             'ids': [payload.id]
           });
         }
       },
       onError: (error) {
-        // Silencioso
       },
     );
   }
 
-  /// Força o Android a re-vincular o NotificationListenerService caso o SO tenha desconectado
   Future<void> rebindService() async {
     try {
       await _methodChannel.invokeMethod('rebindService');
     } catch (_) {}
   }
 
-  /// Converte um payload bruto em um item da Inbox. Retorna null se for promocional ou não-financeira
   InboxNotification? processRawNotification(RawNotificationPayload payload) {
     final fullText = '${payload.rawTitle} ${payload.rawText}'.trim();
 
-    // Rejeição direta de notificações promocionais ou spam
     if (NotificationParser.isPromotionalOrSpam(fullText)) {
       return null;
     }
@@ -72,7 +66,6 @@ class NotificationBridgeService {
       }
     }
 
-    // Se nenhum parser reconheceu como transação com valor válido, ignora
     if (draft == null || draft.amount == null || draft.amount! <= 0) {
       return null;
     }
@@ -93,7 +86,6 @@ class NotificationBridgeService {
     );
   }
 
-  /// Recupera notificações pendentes salvas pelo serviço nativo do Kotlin
   Future<List<InboxNotification>> fetchPendingNotificationsFromNative() async {
     try {
       final List<dynamic>? rawList = await _methodChannel.invokeListMethod('getPendingNotifications');
@@ -111,7 +103,6 @@ class NotificationBridgeService {
         rawIds.add(payload.id);
       }
 
-      // Envia confirmação (ACK) para o Kotlin marcar como sincronizadas
       if (rawIds.isNotEmpty) {
         await _methodChannel.invokeMethod('ackNotification', {'ids': rawIds});
       }
@@ -122,7 +113,6 @@ class NotificationBridgeService {
     }
   }
 
-  /// Verifica se o usuário concedeu a permissão do NotificationListenerService
   Future<bool> checkPermission() async {
     try {
       final bool? granted = await _methodChannel.invokeMethod('checkPermission');
@@ -132,7 +122,6 @@ class NotificationBridgeService {
     }
   }
 
-  /// Verifica se o serviço nativo do Kotlin está ativamente conectado pelo sistema operacional
   Future<bool> isServiceConnected() async {
     try {
       final bool? connected = await _methodChannel.invokeMethod('isServiceConnected');
@@ -142,7 +131,6 @@ class NotificationBridgeService {
     }
   }
 
-  /// Simula uma notificação para testes de integridade da Inbox
   Future<InboxNotification?> simulateTestNotification({
     String appName = 'Carteira do Google',
     String packageName = 'com.google.android.apps.walletnfcrel',
@@ -164,34 +152,27 @@ class NotificationBridgeService {
     return inboxItem;
   }
 
-  /// Abre a tela do sistema operacional para concessão de permissão de acesso a notificações
   Future<void> openPermissionSettings() async {
     try {
       await _methodChannel.invokeMethod('openPermissionSettings');
     } catch (e) {
-      // Ignora erro
     }
   }
 
-  /// Abre a tela de Informações do App no sistema operacional (para ajustar Início Automático e Bateria no HyperOS/Xiaomi)
   Future<void> openAppSettings() async {
     try {
       await _methodChannel.invokeMethod('openAppSettings');
     } catch (e) {
-      // Ignora erro
     }
   }
 
-  /// Atualiza a lista de aplicativos monitorados no Kotlin
   Future<void> updateMonitoredApps(List<String> packages) async {
     try {
       await _methodChannel.invokeMethod('updateMonitoredApps', {'packages': packages});
     } catch (e) {
-      // Ignora erro
     }
   }
 
-  /// Abre uma URL externa no navegador padrão do Android
   Future<bool> openUrl(String url) async {
     try {
       final bool? res = await _methodChannel.invokeMethod('openUrl', {'url': url});

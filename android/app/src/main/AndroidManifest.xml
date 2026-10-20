@@ -29,7 +29,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Serviço Nativo de Interceptação de Notificações -->
         <service
             android:name=".notifications.ChokinNotificationListenerService"
             android:label="Chokin Notification Reader"

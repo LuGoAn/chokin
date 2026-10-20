@@ -5,7 +5,6 @@ class GenericBankParser implements NotificationParser {
   @override
   bool canHandle(RawNotificationPayload payload) {
     final text = '${payload.rawTitle} ${payload.rawText}'.trim();
-    // Apenas manipula se for uma notificação financeira real com valor e palavras de transação
     return NotificationParser.isFinancialTransaction(text);
   }
 

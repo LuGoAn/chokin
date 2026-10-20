@@ -1,5 +1,6 @@
 import 'package:uuid/uuid.dart';
 import '../../core/utils/date_time_utils.dart';
+import '../../core/utils/money.dart';
 import '../entities/credit_card.dart';
 import '../entities/invoice.dart';
 import '../entities/installment.dart';
@@ -8,12 +9,10 @@ import '../entities/transaction.dart';
 class InvoiceCalculator {
   static const _uuid = Uuid();
 
-  /// Determina para qual fatura (mês/ano) uma compra cai com base no dia de fechamento
   static ({int month, int year}) getInvoicePeriodForPurchase({
     required DateTime purchaseDate,
     required int closingDay,
   }) {
-    // Se a compra foi feita no dia de fechamento ou após, vai para a fatura do mês seguinte
     if (purchaseDate.day >= closingDay) {
       final nextMonthDate = DateTime(purchaseDate.year, purchaseDate.month + 1, 1);
       return (month: nextMonthDate.month, year: nextMonthDate.year);
@@ -22,7 +21,6 @@ class InvoiceCalculator {
     }
   }
 
-  /// Gera ou recupera uma fatura para um cartão e período
   static Invoice createInvoiceForPeriod({
     required CreditCard card,
     required int month,
@@ -39,12 +37,11 @@ class InvoiceCalculator {
       closingDate: closingDate,
       dueDate: dueDate,
       effectiveDueDate: dueDate,
-      totalAmount: 0.0,
+      totalAmountCents: 0,
       status: InvoiceStatus.open,
     );
   }
 
-  /// Desmembra uma compra parcelada e cria as parcelas vinculadas
   static List<Installment> generateInstallments({
     required FinancialTransaction transaction,
     required CreditCard card,
@@ -59,11 +56,7 @@ class InvoiceCalculator {
     );
 
     final totalInstallments = transaction.totalInstallments;
-    final installmentAmount = double.parse((transaction.amount / totalInstallments).toStringAsFixed(2));
-    
-    // Tratamento de arredondamento de centavos na última parcela
-    final sumBase = installmentAmount * (totalInstallments - 1);
-    final lastInstallmentAmount = double.parse((transaction.amount - sumBase).toStringAsFixed(2));
+    final amounts = Money.splitInstallments(transaction.amountCents, totalInstallments);
 
     final installments = <Installment>[];
 
@@ -73,7 +66,6 @@ class InvoiceCalculator {
     for (var i = 1; i <= totalInstallments; i++) {
       final invoiceId = 'inv_${card.id}_${currentYear}_$currentMonth';
       
-      // Checa se a fatura já existe na lista
       final invoiceExists = existingInvoices.any((inv) => inv.id == invoiceId);
       if (!invoiceExists) {
         final newInv = createInvoiceForPeriod(
@@ -84,8 +76,6 @@ class InvoiceCalculator {
         onNewInvoiceNeeded(newInv);
       }
 
-      final amount = (i == totalInstallments) ? lastInstallmentAmount : installmentAmount;
-
       installments.add(
         Installment(
           id: _uuid.v4(),
@@ -93,12 +83,11 @@ class InvoiceCalculator {
           invoiceId: invoiceId,
           installmentNumber: i,
           totalInstallments: totalInstallments,
-          amount: amount,
+          amountCents: amounts[i - 1],
           personId: transaction.personId == 'ME' ? null : transaction.personId,
         ),
       );
 
-      // Avança para o próximo mês para a próxima parcela
       currentMonth++;
       if (currentMonth > 12) {
         currentMonth = 1;

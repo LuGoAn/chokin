@@ -45,7 +45,6 @@ void main() {
       final entries = NubankCsvParser.parseCsv(sampleCsv);
       final notifs = NubankCsvParser.convertToInboxNotifications(entries: entries);
 
-      // 10 entries - 1 invoice payment = 9 inbox notifications
       expect(notifs.length, equals(9));
       expect(notifs.any((n) => n.parsedMerchant == 'Cantina Dona Amelia' && n.parsedAmount == 9.80), isTrue);
       expect(notifs.any((n) => n.parsedMerchant == 'Carajas Construcoes'), isTrue);

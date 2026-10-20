@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'money.dart';
 
 class CurrencyUtils {
   static final NumberFormat _formatter = NumberFormat.currency(
@@ -10,6 +11,15 @@ class CurrencyUtils {
 
   static String format(double value) {
     return _formatter.format(value);
+  }
+
+  static String formatCents(int cents) {
+    return _formatter.format(Money.toReais(cents));
+  }
+
+  static int? parseCents(String value) {
+    final reais = parse(value);
+    return reais == null ? null : Money.fromReais(reais);
   }
 
   static String formatNoSymbol(double value) {
@@ -30,34 +40,27 @@ class CurrencyUtils {
 
     if (clean.isEmpty) return null;
 
-    // Se tem tanto ponto quanto vírgula
     if (clean.contains('.') && clean.contains(',')) {
       final lastDot = clean.lastIndexOf('.');
       final lastComma = clean.lastIndexOf(',');
       if (lastComma > lastDot) {
-        // Formato BR: 1.250,36
         clean = clean.replaceAll('.', '').replaceAll(',', '.');
       } else {
-        // Formato US: 1,250.36
         clean = clean.replaceAll(',', '');
       }
       return double.tryParse(clean);
     }
 
-    // Se tem apenas vírgula: 25,36 -> 25.36
     if (clean.contains(',')) {
       clean = clean.replaceAll(',', '.');
       return double.tryParse(clean);
     }
 
-    // Se tem apenas ponto: pode ser 25.36 (decimal) ou 1.000 (milhar)
     if (clean.contains('.')) {
       final parts = clean.split('.');
       if (parts.length == 2 && parts[1].length <= 2) {
-        // Ex: 25.3 ou 25.36 -> decimal
         return double.tryParse(clean);
       } else if (parts.length > 2) {
-        // Ex: 1.000.000
         clean = clean.replaceAll('.', '');
         return double.tryParse(clean);
       }
@@ -67,9 +70,6 @@ class CurrencyUtils {
   }
 }
 
-/// Formatador dinâmico de digitação para valores em Reais (R$)
-/// Conforme o usuário digita os números, formata da direita para a esquerda:
-/// "2" -> "0,02", "25" -> "0,25", "253" -> "2,53", "2536" -> "25,36"
 class CurrencyTextInputFormatter extends TextInputFormatter {
   final int maxDigits;
 
@@ -84,7 +84,6 @@ class CurrencyTextInputFormatter extends TextInputFormatter {
       return newValue.copyWith(text: '');
     }
 
-    // Remove tudo que não for dígito
     String digitsOnly = newValue.text.replaceAll(RegExp(r'\D'), '');
 
     if (digitsOnly.isEmpty) {

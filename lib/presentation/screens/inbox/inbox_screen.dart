@@ -1,355 +1,346 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/sumi.dart';
 import '../../../core/utils/currency_utils.dart';
-import '../../../core/utils/date_time_utils.dart';
+import '../../../core/utils/money.dart';
+import '../../../domain/entities/credit_card.dart';
+import '../../../domain/entities/inbox_notification.dart';
+import '../../../domain/entities/transaction.dart';
 import '../../../domain/parsers/nubank_csv_parser.dart';
+import '../../widgets/sumi_widgets.dart';
 import '../transactions/new_transaction_screen.dart';
 import '../../state/financial_state_notifier.dart';
 
-class InboxScreen extends StatelessWidget {
+class InboxScreen extends StatefulWidget {
   final FinancialStateNotifier notifier;
 
   const InboxScreen({super.key, required this.notifier});
 
   @override
-  Widget build(BuildContext context) {
-    final inbox = notifier.inbox;
+  State<InboxScreen> createState() => _InboxScreenState();
+}
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Novas Movimentações (Inbox)', style: TextStyle(fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(
-            tooltip: 'Importar Fatura (CSV)',
-            icon: const Icon(Icons.file_upload_outlined, color: AppColors.primary),
-            onPressed: () => _showImportCsvModal(context),
-          ),
-          IconButton(
-            tooltip: 'Sincronizar Notificações',
-            icon: const Icon(Icons.sync, color: AppColors.primary),
-            onPressed: () async {
-              final count = await notifier.syncPendingNotifications();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      count > 0
-                          ? '$count nova(s) notificação(ões) financeira(s) importada(s)!'
-                          : 'Nenhuma nova notificação financeira pendente.',
-                    ),
-                  ),
-                );
-              }
-            },
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          final count = await notifier.syncPendingNotifications();
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  count > 0
-                      ? '$count nova(s) notificação(ões) importada(s)!'
-                      : 'Nenhuma nova notificação financeira encontrada.',
-                ),
-              ),
-            );
-          }
-        },
-        child: inbox.isEmpty
-            ? Center(
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: const Icon(Icons.mark_email_read_outlined, size: 48, color: AppColors.primaryLight),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Caixa de entrada limpa!',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                      ),
-                      const SizedBox(height: 6),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 40),
-                        child: Text(
-                          'Apenas compras e transações reais aparecerão aqui. Puxe para baixo para sincronizar ou importe sua fatura.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.textMuted, fontSize: 13),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      ElevatedButton.icon(
-                        onPressed: () => _showImportCsvModal(context),
-                        icon: const Icon(Icons.file_upload_outlined, size: 18),
-                        label: const Text('Importar Fatura (CSV)'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: inbox.length,
-              itemBuilder: (ctx, index) {
-                final item = inbox[index];
-                final isDuplicate = item.isDuplicate;
-                final isPossibleDup = item.isPossibleDuplicate;
+class _InboxScreenState extends State<InboxScreen> {
+  static const _uuid = Uuid();
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isDuplicate ? AppColors.warning : AppColors.border,
-                      width: isDuplicate ? 1.5 : 1.0,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header com Apps Detectados e Alerta de Duplicidade
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              ...item.detectedSources.map((src) {
-                                return Container(
-                                  margin: const EdgeInsets.only(right: 6),
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.secondary.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    src,
-                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.secondary),
-                                  ),
-                                );
-                              }),
-                            ],
-                          ),
-                          Text(
-                            DateTimeUtils.formatDateTime(item.eventTimestamp),
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
+  final Map<String, String> _categoryChoice = {};
 
-                      // Alerta de Duplicidade
-                      if (isDuplicate || isPossibleDup) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppColors.warning.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 16),
-                              const SizedBox(width: 6),
-                              Text(
-                                isDuplicate ? '⚠️ Possível Duplicidade Detectada (Agrupado)' : 'Possível compra duplicada',
-                                style: const TextStyle(color: AppColors.warning, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                      ],
+  FinancialStateNotifier get notifier => widget.notifier;
 
-                      // Estabelecimento e Valor
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              item.parsedMerchant ?? item.rawTitle,
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                            ),
-                          ),
-                          if (item.parsedAmount != null)
-                            Text(
-                              CurrencyUtils.format(item.parsedAmount!),
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primaryLight),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Texto original da notificação
-                      Text(
-                        item.rawText,
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Ações
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                notifier.ignoreInboxNotification(item.id);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Notificação ignorada.')),
-                                );
-                              },
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: AppColors.border),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                              ),
-                              child: const Text('Ignorar', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            flex: 2,
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                final result = await Navigator.of(context).push<bool>(
-                                  MaterialPageRoute(
-                                    builder: (ctx) => NewTransactionScreen(
-                                      notifier: notifier,
-                                      initialDescription: item.parsedMerchant ?? item.rawTitle,
-                                      initialAmount: item.parsedAmount,
-                                      initialPaymentMethod: item.suggestedPaymentMethod,
-                                      initialSourceNotificationId: item.id,
-                                    ),
-                                  ),
-                                );
-                                if (result == true) {
-                                  notifier.ignoreInboxNotification(item.id);
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                              ),
-                              child: const Text('Editar e Adicionar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-      ),
-    );
+  void _toast(String message) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _showImportCsvModal(BuildContext context) async {
-    showModalBottomSheet(
+  PaymentMethod _methodFor(InboxNotification item) {
+    return PaymentMethod.values.where((m) => m.name == item.suggestedPaymentMethod).firstOrNull ??
+        PaymentMethod.creditCard;
+  }
+
+  CreditCard? _cardFor(InboxNotification item) {
+    final cards = notifier.state.cards;
+    final appWord = item.appName.toLowerCase().split(' ').first;
+    return cards.where((c) => appWord.isNotEmpty && c.name.toLowerCase().contains(appWord)).firstOrNull ??
+        cards.firstOrNull;
+  }
+
+  String _defaultCategory() {
+    final expense = notifier.categories.where((c) => c.isExpense).toList();
+    return expense.isNotEmpty ? expense.first.id : 'cat_other';
+  }
+
+  String _timeLabel(DateTime t) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final diff = DateUtils.dateOnly(t).difference(today).inDays;
+    final hm = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    if (diff == 0) return 'hoje, $hm';
+    if (diff == -1) return 'ontem, $hm';
+    return '${t.day.toString().padLeft(2, '0')}/${t.month.toString().padLeft(2, '0')}, $hm';
+  }
+
+  Future<void> _sync() async {
+    final count = await notifier.syncPendingNotifications();
+    _toast(count > 0
+        ? '$count nova${count > 1 ? 's' : ''} compra${count > 1 ? 's' : ''} lida${count > 1 ? 's' : ''}.'
+        : 'Nenhuma notificação nova.');
+  }
+
+  Future<void> _confirm(InboxNotification item) async {
+    final method = _methodFor(item);
+    final card = method == PaymentMethod.creditCard ? _cardFor(item) : null;
+    if (method == PaymentMethod.creditCard && card == null) {
+      await _edit(item);
+      return;
+    }
+    final transaction = FinancialTransaction(
+      id: _uuid.v4(),
+      description: item.parsedMerchant ?? item.rawTitle,
+      amountCents: Money.fromReais(item.parsedAmount ?? 0),
+      purchaseDate: item.eventTimestamp,
+      categoryId: _categoryChoice[item.id] ?? _defaultCategory(),
+      paymentMethod: method,
+      cardId: card?.id,
+      sourceNotificationId: item.id,
+      createdAt: DateTime.now(),
+    );
+    await notifier.confirmInboxNotification(inboxId: item.id, transaction: transaction);
+    _toast('"${transaction.description}" foi para o extrato.');
+  }
+
+  Future<void> _edit(InboxNotification item) async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => NewTransactionScreen(
+          notifier: notifier,
+          initialDescription: item.parsedMerchant ?? item.rawTitle,
+          initialAmount: item.parsedAmount,
+          initialPaymentMethod: item.suggestedPaymentMethod,
+          initialSourceNotificationId: item.id,
+        ),
+      ),
+    );
+    if (result == true) await notifier.markInboxConfirmed(item.id);
+  }
+
+  Future<void> _pickCategory(InboxNotification item) async {
+    final categories = notifier.categories.where((c) => c.isExpense).toList();
+    final current = _categoryChoice[item.id] ?? _defaultCategory();
+    final chosen = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Text('Categoria', style: Sumi.bodyStrong.copyWith(fontSize: 18)),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.file_upload_outlined, color: AppColors.primary, size: 22),
-                      SizedBox(width: 8),
-                      Text('Importar Fatura (CSV)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                    ],
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: AppColors.textMuted),
-                    onPressed: () => Navigator.of(ctx).pop(),
-                  ),
+                  for (final cat in categories)
+                    ChoiceChipSumi(
+                      label: cat.name,
+                      selected: cat.id == current,
+                      onTap: () => Navigator.of(ctx).pop(cat.id),
+                    ),
                 ],
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Importe os lançamentos da fatura do Nubank para revisar, categorizar e confirmar individualmente antes de salvar.',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    Navigator.of(ctx).pop();
-                    await _pickAndProcessCsvFile(context);
-                  },
-                  icon: const Icon(Icons.folder_open),
-                  label: const Text('Selecionar Arquivo .CSV do Celular'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _showPasteCsvDialog(context);
-                  },
-                  icon: const Icon(Icons.paste),
-                  label: const Text('Colar Conteúdo da Fatura Manualmente'),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.border),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
             ],
+          ),
+        ),
+      ),
+    );
+    if (chosen != null) setState(() => _categoryChoice[item.id] = chosen);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: notifier,
+      builder: (context, _) {
+        final inbox = notifier.inbox;
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Caixa de entrada'),
+            actions: [
+              IconButton(
+                  tooltip: 'Importar fatura (CSV)',
+                  icon: const Icon(Icons.upload_file_outlined),
+                  onPressed: _showImportSheet),
+              IconButton(tooltip: 'Buscar notificações', icon: const Icon(Icons.sync), onPressed: _sync),
+            ],
+          ),
+          body: RefreshIndicator(
+            onRefresh: _sync,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(Sumi.gutter, 4, Sumi.gutter, 32),
+              children: [
+                if (inbox.isEmpty) ...[
+                  const SizedBox(height: 80),
+                  const Center(child: Text('Nada para revisar', style: Sumi.bodyStrong)),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'As compras lidas das notificações do banco aparecem aqui. Puxe para baixo para buscar '
+                    'ou importe a fatura do Nubank em CSV.',
+                    style: Sumi.caption,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  Center(
+                    child: OutlinedButton(onPressed: _showImportSheet, child: const Text('Importar fatura (CSV)')),
+                  ),
+                ] else ...[
+                  Text(
+                    '${inbox.length} compra${inbox.length > 1 ? 's' : ''} para revisar. '
+                    'Confirme para mandar ao extrato, ou edite antes.',
+                    style: Sumi.caption,
+                  ),
+                  const SizedBox(height: 16),
+                  for (final item in inbox) _buildItem(item),
+                ],
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  Future<void> _pickAndProcessCsvFile(BuildContext context) async {
+  Widget _buildItem(InboxNotification item) {
+    final method = _methodFor(item);
+    final card = method == PaymentMethod.creditCard ? _cardFor(item) : null;
+    final categoryId = _categoryChoice[item.id] ?? _defaultCategory();
+    final category = notifier.categories.where((c) => c.id == categoryId).firstOrNull;
+    final methodLabel = switch (method) {
+      PaymentMethod.pix => 'Pix',
+      PaymentMethod.cash => 'Dinheiro/Débito',
+      PaymentMethod.creditCard => card?.name ?? 'Cartão',
+      PaymentMethod.other => 'Outro',
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.borderStrong),
+        borderRadius: BorderRadius.circular(Sumi.radius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(item.detectedSources.join(' + '), style: Sumi.caption)),
+              Text(_timeLabel(item.eventTimestamp), style: Sumi.caption),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                  child: Text(item.parsedMerchant ?? item.rawTitle, style: Sumi.bodyStrong.copyWith(fontSize: 16))),
+              const SizedBox(width: 12),
+              if (item.parsedAmount != null) Text(CurrencyUtils.format(item.parsedAmount!), style: Sumi.figures(19)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(item.rawText, style: Sumi.caption, maxLines: 2, overflow: TextOverflow.ellipsis),
+          if (item.isDuplicate || item.isPossibleDuplicate) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.copy_all_outlined, size: 14, color: AppColors.warning),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    item.isDuplicate
+                        ? 'Duas notificações da mesma compra foram juntadas aqui'
+                        : 'Pode ser a mesma compra de outra notificação',
+                    style: Sumi.caption.copyWith(color: AppColors.warning),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ChoiceChipSumi(
+                label: category?.name ?? 'Categoria',
+                selected: false,
+                semanticLabel: 'Categoria: ${category?.name ?? 'nenhuma'}. Toque para trocar',
+                onTap: () => _pickCategory(item),
+              ),
+              Text(methodLabel, style: Sumi.caption),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
+                onPressed: () async {
+                  await notifier.ignoreInboxNotification(item.id);
+                  _toast('Notificação ignorada.');
+                },
+                child: const Text('Ignorar'),
+              ),
+              const Spacer(),
+              OutlinedButton(onPressed: () => _edit(item), child: const Text('Editar')),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: item.parsedAmount == null ? null : () => _confirm(item),
+                style: ElevatedButton.styleFrom(minimumSize: const Size(44, 44)),
+                child: const Text('Confirmar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImportSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Importar fatura (CSV)', style: Sumi.bodyStrong.copyWith(fontSize: 18)),
+              const SizedBox(height: 6),
+              const Text(
+                'Os lançamentos da fatura do Nubank entram aqui para você revisar e confirmar um a um.',
+                style: Sumi.caption,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.of(ctx).pop();
+                    await _pickCsvFile();
+                  },
+                  child: const Text('Escolher arquivo .csv'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _showPasteDialog();
+                  },
+                  child: const Text('Colar o conteúdo da fatura'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickCsvFile() async {
     try {
-      final file = await FilePicker.pickFile(
-        type: FileType.any,
-      );
-
+      final file = await FilePicker.pickFile(type: FileType.any);
       if (file == null) return;
-
       final bytes = await file.readAsBytes();
       String content;
       try {
@@ -357,40 +348,30 @@ class InboxScreen extends StatelessWidget {
       } catch (_) {
         content = latin1.decode(bytes);
       }
-
-      await _processCsvContent(context, content);
+      await _processCsv(content);
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao ler arquivo: $e')),
-        );
-      }
+      _toast('Não foi possível ler o arquivo: $e');
     }
   }
 
-  void _showPasteCsvDialog(BuildContext context) {
+  void _showPasteDialog() {
     final textCtrl = TextEditingController();
-
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Colar Fatura (CSV)', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+        title: const Text('Colar fatura (CSV)'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Cole o texto da fatura exportada (colunas date, title, amount):',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-            ),
+            const Text('Cole o texto da fatura exportada (colunas date, title, amount):', style: Sumi.caption),
             const SizedBox(height: 10),
             TextField(
               controller: textCtrl,
               maxLines: 8,
               style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
               decoration: const InputDecoration(
-                hintText: 'date,title,amount\n2026-09-24,Cantina Dona Amelia,"9,80"\n2026-09-01,Aliexpress - Parcela 2/4,"75,71"',
+                hintText: 'date,title,amount\n2026-09-24,Cantina Dona Amelia,"9,80"',
               ),
             ),
           ],
@@ -401,38 +382,23 @@ class InboxScreen extends StatelessWidget {
             onPressed: () {
               final text = textCtrl.text.trim();
               Navigator.of(ctx).pop();
-              if (text.isNotEmpty) {
-                _processCsvContent(context, text);
-              }
+              if (text.isNotEmpty) _processCsv(text);
             },
-            child: const Text('Processar'),
+            child: const Text('Importar'),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _processCsvContent(BuildContext context, String content) async {
+  Future<void> _processCsv(String content) async {
     final entries = NubankCsvParser.parseCsv(content);
     if (entries.isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Nenhum lançamento válido encontrado no CSV da fatura.')),
-        );
-      }
+      _toast('Nenhum lançamento válido encontrado no CSV.');
       return;
     }
-
     final notifications = NubankCsvParser.convertToInboxNotifications(entries: entries);
     final count = await notifier.importInboxNotifications(notifications);
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$count lançamentos da fatura importados para o Inbox! Revise e confirme cada um.'),
-          backgroundColor: AppColors.income,
-        ),
-      );
-    }
+    _toast('$count lançamento${count > 1 ? 's' : ''} da fatura importado${count > 1 ? 's' : ''}. Revise e confirme.');
   }
 }

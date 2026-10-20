@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:sqflite/sqflite.dart';
 import '../../domain/entities/category.dart';
 import '../../domain/entities/credit_card.dart';
@@ -16,98 +17,34 @@ class FinancialRepository {
 
   FinancialRepository({DatabaseHelper? dbHelper}) : dbHelper = dbHelper ?? DatabaseHelper.instance;
 
+  FinancialState? _persisted;
+  Future<void> _writeQueue = Future.value();
+
   Future<FinancialState> loadFinancialState() async {
     final db = await dbHelper.database;
 
-    // 1. Saldos (unifica Caixinha/Reserva no Saldo principal)
-    final settingsMaps = await db.query('app_settings');
-    double available = 0.0;
-    double reserve = 0.0;
-    for (final map in settingsMaps) {
-      if (map['key'] == 'available_balance') {
-        available = double.tryParse(map['value'] as String) ?? 0.0;
-      } else if (map['key'] == 'reserve_balance') {
-        reserve = double.tryParse(map['value'] as String) ?? 0.0;
-      }
+    final people = (await db.query('people')).map(Person.fromMap).toList();
+    final cards = (await db.query('credit_cards')).map(CreditCard.fromMap).toList();
+    final invoices = (await db.query('invoices')).map(Invoice.fromMap).toList();
+    final installments = (await db.query('installments')).map(Installment.fromMap).toList();
+
+    final allPayments = (await db.query('reimbursement_payments')).map(ReimbursementPayment.fromMap).toList();
+    final paymentsByReimbursement = <String, List<ReimbursementPayment>>{};
+    for (final p in allPayments) {
+      paymentsByReimbursement.putIfAbsent(p.reimbursementId, () => []).add(p);
     }
+    final reimbursements = (await db.query('reimbursements'))
+        .map((m) => Reimbursement.fromMap(m, payments: paymentsByReimbursement[m['id']] ?? const []))
+        .toList();
 
-    if (reserve > 0) {
-      available += reserve;
-      reserve = 0.0;
-      await db.insert('app_settings', {'key': 'available_balance', 'value': available.toString()}, conflictAlgorithm: ConflictAlgorithm.replace);
-      await db.insert('app_settings', {'key': 'reserve_balance', 'value': '0.0'}, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
+    final transactions = (await db.query('transactions', orderBy: 'purchaseDate DESC, createdAt DESC'))
+        .map(FinancialTransaction.fromMap)
+        .toList();
+    final movements = (await db.query('financial_movements', orderBy: 'movementDate DESC'))
+        .map(FinancialMovement.fromMap)
+        .toList();
 
-    // 2. Pessoas
-    final peopleMaps = await db.query('people');
-    final people = peopleMaps.map((m) => Person.fromMap(m)).toList();
-
-    // 3. Categorias
-    final catMaps = await db.query('categories');
-    final categories = catMaps.map((m) => Category.fromMap(m)).toList();
-
-    // 4. Cartões
-    final cardMaps = await db.query('credit_cards');
-    final cards = cardMaps.map((m) => CreditCard.fromMap(m)).toList();
-
-    // 5. Faturas
-    final invoiceMaps = await db.query('invoices');
-    final invoices = invoiceMaps.map((m) => Invoice.fromMap(m)).toList();
-
-    // 6. Parcelas
-    final installmentMaps = await db.query('installments');
-    final installments = installmentMaps.map((m) => Installment.fromMap(m)).toList();
-
-    // 7. Reembolsos e Pagamentos
-    final reimbPaymentMaps = await db.query('reimbursement_payments');
-    final allPayments = reimbPaymentMaps.map((m) => ReimbursementPayment.fromMap(m)).toList();
-
-    final reimbMaps = await db.query('reimbursements');
-    final reimbursements = reimbMaps.map((m) {
-      final rId = m['id'] as String;
-      final payments = allPayments.where((p) => p.reimbursementId == rId).toList();
-      return Reimbursement.fromMap(m, payments: payments);
-    }).toList();
-
-    // 8. Transações
-    final txMaps = await db.query('transactions', where: 'isCancelled = 0', orderBy: 'purchaseDate DESC, createdAt DESC');
-    final transactions = txMaps.map((m) => FinancialTransaction.fromMap(m)).toList();
-
-    final now = DateTime.now();
-
-    // 9. Higienização: remove qualquer movimentação financeira futura indevidamente criada no ledger
-    final futureTxIds = transactions.where((t) => t.purchaseDate.isAfter(now)).map((t) => t.id).toList();
-    if (futureTxIds.isNotEmpty) {
-      final placeholders = List.filled(futureTxIds.length, '?').join(',');
-      await db.delete(
-        'financial_movements',
-        where: 'movementDate > ? OR transactionId IN ($placeholders)',
-        whereArgs: [now.toIso8601String(), ...futureTxIds],
-      );
-    } else {
-      await db.delete('financial_movements', where: 'movementDate > ?', whereArgs: [now.toIso8601String()]);
-    }
-
-    final movMaps = await db.query('financial_movements', orderBy: 'movementDate DESC');
-    final movements = movMaps.map((m) => FinancialMovement.fromMap(m)).toList();
-
-    // 10. Higienização de saldo inflacionado por recorrências futuras no app_settings
-    final futureRecurringIncomeSum = transactions
-        .where((t) => t.isRecurring && t.type == TransactionType.income && t.purchaseDate.isAfter(now))
-        .fold<double>(0.0, (acc, t) => acc + t.amount);
-
-    final futureRecurringExpenseSum = transactions
-        .where((t) => t.isRecurring && t.type == TransactionType.expense && !t.isCreditCard && t.purchaseDate.isAfter(now))
-        .fold<double>(0.0, (acc, t) => acc + t.amount);
-
-    if (futureRecurringIncomeSum > 0 && available >= futureRecurringIncomeSum) {
-      available = double.parse((available - futureRecurringIncomeSum + futureRecurringExpenseSum).toStringAsFixed(2));
-      await db.insert('app_settings', {'key': 'available_balance', 'value': available.toString()}, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-
-    return FinancialState(
-      availableBalance: available,
-      reserveBalance: reserve,
+    final state = FinancialState(
       transactions: transactions,
       invoices: invoices,
       installments: installments,
@@ -116,56 +53,59 @@ class FinancialRepository {
       cards: cards,
       people: people,
     );
+    _persisted = state;
+    return state;
   }
 
-  /// Salva atomicamente o novo estado após qualquer operação financeira
-  Future<void> persistFinancialState(FinancialState state) async {
+  Future<void> persistFinancialState(FinancialState state) {
+    final write = _writeQueue.then((_) => _persist(state));
+    _writeQueue = write.catchError((_) {});
+    return write;
+  }
+
+  Future<void> _persist(FinancialState state) async {
     final db = await dbHelper.database;
+    final before = _persisted ?? await loadFinancialState();
 
     await db.transaction((txn) async {
-      // 1. Atualiza saldos
-      await txn.insert('app_settings', {'key': 'available_balance', 'value': state.availableBalance.toString()},
-          conflictAlgorithm: ConflictAlgorithm.replace);
-      await txn.insert('app_settings', {'key': 'reserve_balance', 'value': state.reserveBalance.toString()},
-          conflictAlgorithm: ConflictAlgorithm.replace);
-
-      // 2. Sincroniza faturas
-      await txn.delete('invoices');
-      for (final inv in state.invoices) {
-        await txn.insert('invoices', inv.toMap());
-      }
-
-      // 3. Sincroniza parcelas
-      await txn.delete('installments');
-      for (final inst in state.installments) {
-        await txn.insert('installments', inst.toMap());
-      }
-
-      // 4. Sincroniza transações
-      await txn.delete('transactions');
-      for (final tx in state.transactions) {
-        await txn.insert('transactions', tx.toMap());
-      }
-
-      // 5. Sincroniza reembolsos e pagamentos
-      await txn.delete('reimbursements');
-      await txn.delete('reimbursement_payments');
-      for (final r in state.reimbursements) {
-        await txn.insert('reimbursements', r.toMap());
-        for (final p in r.payments) {
-          await txn.insert('reimbursement_payments', p.toMap());
-        }
-      }
-
-      // 6. Sincroniza movimentações
-      await txn.delete('financial_movements');
-      for (final m in state.movements) {
-        await txn.insert('financial_movements', m.toMap());
-      }
+      await _syncTable(txn, 'invoices', before.invoices.map((e) => e.toMap()), state.invoices.map((e) => e.toMap()));
+      await _syncTable(txn, 'installments', before.installments.map((e) => e.toMap()), state.installments.map((e) => e.toMap()));
+      await _syncTable(txn, 'transactions', before.transactions.map((e) => e.toMap()), state.transactions.map((e) => e.toMap()));
+      await _syncTable(txn, 'reimbursements', before.reimbursements.map((e) => e.toMap()), state.reimbursements.map((e) => e.toMap()));
+      await _syncTable(
+        txn,
+        'reimbursement_payments',
+        before.reimbursements.expand((r) => r.payments).map((e) => e.toMap()),
+        state.reimbursements.expand((r) => r.payments).map((e) => e.toMap()),
+      );
+      await _syncTable(txn, 'financial_movements', before.movements.map((e) => e.toMap()), state.movements.map((e) => e.toMap()));
     });
+
+    _persisted = state;
   }
 
-  // --- Inbox Operations ---
+  static Future<void> _syncTable(
+    Transaction txn,
+    String table,
+    Iterable<Map<String, dynamic>> before,
+    Iterable<Map<String, dynamic>> after,
+  ) async {
+    final oldRows = {for (final r in before) r['id'] as String: r};
+    final newRows = {for (final r in after) r['id'] as String: r};
+
+    final batch = txn.batch();
+    for (final id in oldRows.keys) {
+      if (!newRows.containsKey(id)) batch.delete(table, where: 'id = ?', whereArgs: [id]);
+    }
+    for (final entry in newRows.entries) {
+      final old = oldRows[entry.key];
+      if (old == null || !mapEquals(old, entry.value)) {
+        batch.insert(table, entry.value, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<List<InboxNotification>> getInboxNotifications() async {
     final db = await dbHelper.database;
     final maps = await db.query(
@@ -192,7 +132,6 @@ class FinancialRepository {
     );
   }
 
-  // --- Cadastro de Cartões, Pessoas e Categorias ---
   Future<void> addCreditCard(CreditCard card) async {
     final db = await dbHelper.database;
     await db.insert('credit_cards', card.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
@@ -258,7 +197,6 @@ class FinancialRepository {
     final db = await dbHelper.database;
     final maps = await db.query('categories', orderBy: 'displayOrder ASC');
     if (maps.isEmpty) {
-      // Se estiver vazio, popula as categorias padrão
       for (final cat in Category.defaultCategories()) {
         await db.insert('categories', cat.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
       }
@@ -266,14 +204,6 @@ class FinancialRepository {
       return newMaps.map((m) => Category.fromMap(m)).toList();
     }
     return maps.map((m) => Category.fromMap(m)).toList();
-  }
-
-  Future<void> setInitialBalances({required double available, required double reserve}) async {
-    final db = await dbHelper.database;
-    await db.insert('app_settings', {'key': 'available_balance', 'value': available.toString()},
-        conflictAlgorithm: ConflictAlgorithm.replace);
-    await db.insert('app_settings', {'key': 'reserve_balance', 'value': reserve.toString()},
-        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<String?> getSetting(String key) async {

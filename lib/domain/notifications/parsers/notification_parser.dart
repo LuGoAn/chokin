@@ -4,7 +4,6 @@ abstract class NotificationParser {
   bool canHandle(RawNotificationPayload payload);
   ParsedTransactionDraft? parse(RawNotificationPayload payload);
 
-  /// Termos que identificam que a notificação é promocional, aviso ou spam não-financeiro
   static const List<String> promoKeywords = [
     'empréstimo', 'emprestimo', 'limite aumentou', 'aumento de limite', 'novo limite',
     'ajuste seu limite', 'aumentar seu limite', 'cupom', 'desconto', 'cashback', 'ganhe',
@@ -17,7 +16,6 @@ abstract class NotificationParser {
     'guardar dinheiro', 'resgate seu', 'aproveite', 'parabéns', 'parabens', 'sorteio'
   ];
 
-  /// Termos que confirmam que se trata de uma movimentação/transação financeira real
   static const List<String> transactionKeywords = [
     'compra', 'pagou', 'pago', 'pagamento', 'pagar', 'pix enviado', 'pix recebido', 'pix de',
     'transferência enviada', 'transferência recebida', 'transferencia enviada', 'transferencia recebida',
@@ -29,7 +27,6 @@ abstract class NotificationParser {
     'wallet', 'aproximação', 'aproximacao', 'contactless', 'gasto', 'gastou'
   ];
 
-  /// Retorna true se o texto contém palavras típicas de promoção, marketing ou avisos
   static bool isPromotionalOrSpam(String text) {
     final lower = text.toLowerCase();
     for (final kw in promoKeywords) {
@@ -40,7 +37,6 @@ abstract class NotificationParser {
     return false;
   }
 
-  /// Retorna true apenas se a notificação for comprovadamente uma transação financeira real
   static bool isFinancialTransaction(String text) {
     if (isPromotionalOrSpam(text)) return false;
 
@@ -53,9 +49,7 @@ abstract class NotificationParser {
     return (hasTransactionKeyword || hasMerchantPattern || isDigitalWallet) && hasAmount;
   }
 
-  /// Extrai valor em reais de strings com formatos comuns (ex: R$ 89,90 ou R$ 38.50 ou 89,90 ou BRL 50,00 ou R$ 50)
   static double? extractAmount(String text) {
-    // 1. Valores com prefixo monetário explícito (R$ ou BRL)
     final explicitRegex = RegExp(
       r'(?:R\$\s*|BRL\s*)([0-9]{1,3}(?:\.[0-9]{3})*\,[0-9]{2}|[0-9]{1,3}(?:\,[0-9]{3})*\.[0-9]{2}|[0-9]+(?:[\.,][0-9]{2})?|\b[0-9]+\b)',
       caseSensitive: false,
@@ -73,7 +67,6 @@ abstract class NotificationParser {
       }
     }
 
-    // 2. Formato numérico padrão brasileiro decimal (ex: 89,90 ou 1.250,50)
     final standardRegex = RegExp(r'\b([0-9]{1,3}(?:\.[0-9]{3})*\,[0-9]{2})\b');
     final match = standardRegex.firstMatch(text);
     if (match != null) {

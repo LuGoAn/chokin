@@ -11,7 +11,6 @@ void main() {
       expect(expenses.isNotEmpty, isTrue);
       expect(incomes.isNotEmpty, isTrue);
 
-      // Verify specific categories exist in their respective lists
       expect(expenses.any((c) => c.id == 'cat_food'), isTrue);
       expect(expenses.any((c) => c.id == 'cat_transport'), isTrue);
       expect(expenses.any((c) => c.id == 'cat_salary'), isFalse);

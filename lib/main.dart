@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -9,7 +10,13 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('pt_BR', null);
 
-  // Trava orientação vertical para interface mobile-first
+  LicenseRegistry.addLicense(() async* {
+    for (final font in ['ShipporiMincho', 'ZenKakuGothicNew']) {
+      final text = await rootBundle.loadString('assets/fonts/OFL-$font.txt');
+      yield LicenseEntryWithLineBreaks([font], text);
+    }
+  });
+
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -45,7 +52,6 @@ class _ChokinAppState extends State<ChokinApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Sempre que o app volta para o primeiro plano, busca notificações acumuladas
       widget.notifier.syncPendingNotifications();
     }
   }

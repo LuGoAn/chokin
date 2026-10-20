@@ -39,7 +39,6 @@ class GoogleWalletParser implements NotificationParser {
     String? merchant;
     final text = payload.rawText.isNotEmpty ? payload.rawText : fullText;
 
-    // 1. "em Padaria", "no Restaurante", "na Drogaria", "para Lojas Americanas"
     final merchantRegex = RegExp(
       r'(?:em|no|na|para|no estabelecimento|em\s+loja)\s+([A-Za-z0-9\u00C0-\u00FF\s\.\-_&]+?)(?:\s+usando|\s+com o cartão|\s+com cartão|\s+aprovado|\.|$)',
       caseSensitive: false,
@@ -56,7 +55,6 @@ class GoogleWalletParser implements NotificationParser {
       }
     }
 
-    // 2. Se não encontrou no texto, verifica se o título é o próprio nome do estabelecimento
     if (merchant == null) {
       final t = payload.rawTitle.trim();
       final lowerTitle = t.toLowerCase();

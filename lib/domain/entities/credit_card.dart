@@ -1,10 +1,12 @@
+import '../../core/utils/money.dart';
+
 class CreditCard {
   final String id;
   final String name;
   final int closingDay;
   final int dueDay;
-  final double? creditLimit;
-  final String? flag; // 'Mastercard', 'Visa', etc.
+  final int? creditLimitCents;
+  final String? flag;
   final String colorHex;
 
   const CreditCard({
@@ -12,10 +14,12 @@ class CreditCard {
     required this.name,
     required this.closingDay,
     required this.dueDay,
-    this.creditLimit,
+    this.creditLimitCents,
     this.flag,
     this.colorHex = '0xFF6366F1',
   });
+
+  double? get creditLimit => creditLimitCents == null ? null : Money.toReais(creditLimitCents!);
 
   Map<String, dynamic> toMap() {
     return {
@@ -23,7 +27,7 @@ class CreditCard {
       'name': name,
       'closingDay': closingDay,
       'dueDay': dueDay,
-      'creditLimit': creditLimit,
+      'creditLimitCents': creditLimitCents,
       'flag': flag,
       'colorHex': colorHex,
     };
@@ -35,7 +39,7 @@ class CreditCard {
       name: map['name'] as String,
       closingDay: map['closingDay'] as int,
       dueDay: map['dueDay'] as int,
-      creditLimit: (map['creditLimit'] as num?)?.toDouble(),
+      creditLimitCents: map['creditLimitCents'] as int?,
       flag: map['flag'] as String?,
       colorHex: map['colorHex'] as String? ?? '0xFF6366F1',
     );

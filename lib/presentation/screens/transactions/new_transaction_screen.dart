@@ -1,15 +1,16 @@
-import 'package:flutter/material.dart' hide Category;
-import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/sumi.dart';
 import '../../../core/utils/currency_utils.dart';
 import '../../../core/utils/date_time_utils.dart';
-import '../../../domain/entities/category.dart';
+import '../../../core/utils/money.dart';
+import '../../../domain/engine/invoice_calculator.dart';
 import '../../../domain/entities/credit_card.dart';
-import '../../../domain/entities/person.dart';
 import '../../../domain/entities/transaction.dart';
+import '../../widgets/sumi_widgets.dart';
 import '../categories/categories_management_screen.dart';
-import '../people/people_management_screen.dart';
+import '../invoices/invoices_screen.dart';
 import '../../state/financial_state_notifier.dart';
 
 class NewTransactionScreen extends StatefulWidget {
@@ -43,11 +44,19 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   late PaymentMethod _paymentMethod;
   late DateTime _selectedDate;
   late String _selectedCategoryId;
-  late String _selectedPersonId;
+  String _selectedPersonId = 'ME';
   String? _selectedCardId;
   int _installments = 1;
-  bool _isRecurring = false;
-  RecurrenceFrequency _recurrence = RecurrenceFrequency.monthly;
+  RecurrenceFrequency _recurrence = RecurrenceFrequency.none;
+
+  static const _recurrenceOptions = [
+    (RecurrenceFrequency.none, 'Não repete'),
+    (RecurrenceFrequency.daily, 'Todo dia'),
+    (RecurrenceFrequency.weekly, 'Toda semana'),
+    (RecurrenceFrequency.biweekly, 'A cada 15 dias'),
+    (RecurrenceFrequency.monthly, 'Todo mês'),
+    (RecurrenceFrequency.yearly, 'Todo ano'),
+  ];
 
   @override
   void initState() {
@@ -59,14 +68,12 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     );
     _notesController = TextEditingController();
 
-    _paymentMethod = widget.initialPaymentMethod == 'pix' ? PaymentMethod.pix : PaymentMethod.creditCard;
+    _paymentMethod = PaymentMethod.values.where((m) => m.name == widget.initialPaymentMethod).firstOrNull ??
+        PaymentMethod.creditCard;
     _selectedDate = DateTime.now();
 
-    final categories = widget.notifier.categories;
-    _selectedCategoryId = categories.isNotEmpty ? categories.first.id : 'cat_other';
-
-    final people = widget.notifier.state.people;
-    _selectedPersonId = people.isNotEmpty ? people.first.id : 'ME';
+    final expenseCategories = widget.notifier.categories.where((c) => c.isExpense).toList();
+    _selectedCategoryId = expenseCategories.isNotEmpty ? expenseCategories.first.id : 'cat_other';
 
     final cards = widget.notifier.state.cards;
     _selectedCardId = cards.isNotEmpty ? cards.first.id : null;
@@ -80,63 +87,52 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     super.dispose();
   }
 
-  String _recurrenceLabel(RecurrenceFrequency freq) {
-    switch (freq) {
-      case RecurrenceFrequency.daily:
-        return 'Diária';
-      case RecurrenceFrequency.weekly:
-        return 'Semanal';
-      case RecurrenceFrequency.biweekly:
-        return 'Quinzenal';
-      case RecurrenceFrequency.monthly:
-        return 'Mensal';
-      case RecurrenceFrequency.yearly:
-        return 'Anual';
-      case RecurrenceFrequency.none:
-      default:
-        return 'Única';
-    }
-  }
+  bool get _isExpense => _type == TransactionType.expense;
+  bool get _isCard => _isExpense && _paymentMethod == PaymentMethod.creditCard;
+  bool get _isForOther => _isExpense && _selectedPersonId != 'ME';
 
   void _saveTransaction() {
     final desc = _descController.text.trim();
-    final amount = CurrencyUtils.parse(_amountController.text);
+    final amountCents = CurrencyUtils.parseCents(_amountController.text);
 
+    if (amountCents == null || amountCents <= 0) {
+      _warn('Informe um valor válido.');
+      return;
+    }
     if (desc.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Informe uma descrição.')));
+      _warn('Informe uma descrição.');
       return;
     }
-
-    if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Informe um valor válido.')));
+    if (_isCard && _selectedCardId == null) {
+      _warn('Cadastre ou selecione um cartão de crédito.');
       return;
     }
-
-    if (_paymentMethod == PaymentMethod.creditCard && _selectedCardId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um cartão de crédito.')));
+    if (_isForOther && !widget.notifier.state.people.any((p) => p.id == _selectedPersonId)) {
+      _warn('Escolha quem vai pagar.');
       return;
     }
 
     final now = DateTime.now();
-    final effectivePurchaseDate = (_selectedDate.year == now.year && _selectedDate.month == now.month && _selectedDate.day == now.day)
+    final effectivePurchaseDate = DateUtils.isSameDay(_selectedDate, now)
         ? now
         : DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, now.hour, now.minute, now.second);
 
+    final isRecurring = _recurrence != RecurrenceFrequency.none;
     final transaction = FinancialTransaction(
       id: _uuid.v4(),
       description: desc,
-      amount: amount,
+      amountCents: amountCents,
       purchaseDate: effectivePurchaseDate,
       categoryId: _selectedCategoryId,
       type: _type,
-      paymentMethod: _type == TransactionType.income ? PaymentMethod.pix : _paymentMethod,
-      personId: _selectedPersonId,
-      cardId: _paymentMethod == PaymentMethod.creditCard ? _selectedCardId : null,
-      totalInstallments: _paymentMethod == PaymentMethod.creditCard ? _installments : 1,
+      paymentMethod: _isExpense ? _paymentMethod : PaymentMethod.pix,
+      personId: _isExpense ? _selectedPersonId : 'ME',
+      cardId: _isCard ? _selectedCardId : null,
+      totalInstallments: _isCard ? _installments : 1,
       notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
       sourceNotificationId: widget.initialSourceNotificationId,
-      isRecurring: _isRecurring,
-      recurrence: _isRecurring ? _recurrence : RecurrenceFrequency.none,
+      isRecurring: isRecurring,
+      recurrence: _recurrence,
       createdAt: now,
     );
 
@@ -144,473 +140,407 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     Navigator.of(context).pop(true);
   }
 
+  void _warn(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   void _switchType(TransactionType newType) {
     if (_type == newType) return;
     setState(() {
       _type = newType;
-      final newCats = widget.notifier.categories.where((c) => newType == TransactionType.income ? c.isIncome : c.isExpense).toList();
+      final newCats = widget.notifier.categories
+          .where((c) => newType == TransactionType.income ? c.isIncome : c.isExpense)
+          .toList();
       if (newCats.isNotEmpty && !newCats.any((c) => c.id == _selectedCategoryId)) {
         _selectedCategoryId = newCats.first.id;
       }
     });
   }
 
+  String _dateLabel(DateTime date) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final diff = DateUtils.dateOnly(date).difference(today).inDays;
+    final dayMonth = '${date.day} ${Sumi.shortMonth(date.month)}';
+    if (diff == 0) return 'Hoje, $dayMonth';
+    if (diff == -1) return 'Ontem, $dayMonth';
+    if (diff == 1) return 'Amanhã, $dayMonth';
+    return DateTimeUtils.formatDate(date);
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked != null) setState(() => _selectedDate = picked);
+  }
+
+  Future<void> _pickRecurrence() async {
+    final choice = await showModalBottomSheet<RecurrenceFrequency>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (freq, label) in _recurrenceOptions)
+              ListTile(
+                title: Text(label, style: Sumi.body),
+                trailing: freq == _recurrence ? const Icon(Icons.check, color: AppColors.primary) : null,
+                onTap: () => Navigator.of(ctx).pop(freq),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (choice != null) setState(() => _recurrence = choice);
+  }
+
+  String? _installmentHint(CreditCard? card) {
+    if (card == null) return null;
+    final amountCents = CurrencyUtils.parseCents(_amountController.text) ?? 0;
+    final period = InvoiceCalculator.getInvoicePeriodForPurchase(
+      purchaseDate: _selectedDate,
+      closingDay: card.closingDay,
+    );
+    final due = DateTimeUtils.calculateDueDate(period.year, period.month, card.dueDay);
+    final dueText = '${due.day.toString().padLeft(2, '0')}/${due.month.toString().padLeft(2, '0')}';
+    if (amountCents <= 0) return 'Entra na fatura que vence em $dueText';
+    final first = Money.splitInstallments(amountCents, _installments).first;
+    final prefix = _installments == 1 ? 'À vista' : '$_installments × ${CurrencyUtils.formatCents(first)} · 1ª parcela';
+    return '$prefix na fatura que vence em $dueText';
+  }
+
+  Future<void> _addPerson() async {
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nova pessoa'),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Nome (ex: Mãe, Ana)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(nameCtrl.text.trim()), child: const Text('Adicionar')),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    await widget.notifier.addPerson(name);
+    if (!mounted) return;
+    final others = widget.notifier.state.people.where((p) => !p.isMe).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    setState(() {
+      if (others.isNotEmpty) _selectedPersonId = others.last.id;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final categories = widget.notifier.categories;
-    final availableCategories = categories.where((c) => _type == TransactionType.income ? c.isIncome : c.isExpense).toList();
-    final people = widget.notifier.state.people;
+    final categories =
+        widget.notifier.categories.where((c) => _type == TransactionType.income ? c.isIncome : c.isExpense).toList();
+    final people = widget.notifier.state.people.where((p) => !p.isMe).toList();
     final cards = widget.notifier.state.cards;
+    final selectedCard = cards.where((c) => c.id == _selectedCardId).firstOrNull;
+    final recurrenceLabel = _recurrenceOptions.firstWhere((o) => o.$1 == _recurrence).$2;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nova Transação', style: TextStyle(fontWeight: FontWeight.bold)),
+        leading: IconButton(
+          tooltip: 'Fechar',
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        centerTitle: true,
+        title: const Text('Novo lançamento', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Tipo (Despesa / Receita)
-            Container(
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _switchType(TransactionType.expense),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _type == TransactionType.expense ? AppColors.expense.withOpacity(0.2) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(11),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Despesa',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: _type == TransactionType.expense ? AppColors.expense : AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(Sumi.gutter, 8, Sumi.gutter, 24),
+        children: [
+          SegmentedChoice<TransactionType>(
+            underline: true,
+            options: const [(TransactionType.expense, 'Despesa'), (TransactionType.income, 'Receita')],
+            value: _type,
+            onChanged: _switchType,
+          ),
+          const SizedBox(height: 28),
+
+          const Center(child: Text('Valor', style: Sumi.label)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text('R\$', style: Sumi.figures(22, color: AppColors.textSecondary)),
+              const SizedBox(width: 8),
+              IntrinsicWidth(
+                child: TextField(
+                  controller: _amountController,
+                  autofocus: widget.initialAmount == null,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [CurrencyTextInputFormatter()],
+                  onChanged: (_) => setState(() {}),
+                  textAlign: TextAlign.center,
+                  style: Sumi.figures(52),
+                  decoration: InputDecoration(
+                    hintText: '0,00',
+                    hintStyle: Sumi.figures(52, color: AppColors.textMuted),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
                   ),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _switchType(TransactionType.income),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _type == TransactionType.income ? AppColors.income.withOpacity(0.2) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(11),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Receita',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: _type == TransactionType.income ? AppColors.income : AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // 2. Valor
-            TextField(
-              controller: _amountController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [CurrencyTextInputFormatter()],
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-              decoration: const InputDecoration(
-                labelText: 'Valor (R\$)',
-                prefixText: 'R\$ ',
-                prefixStyle: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 3. Descrição
-            TextField(
-              controller: _descController,
-              textCapitalization: TextCapitalization.sentences,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: 'Descrição',
-                hintText: 'Ex: Amazon, Mercado, Almoço...',
-                suffixIcon: _descController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _descController.clear();
-                          setState(() {});
-                        },
-                      )
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 4. Data
-            InkWell(
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _selectedDate,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime(2030),
-                );
-                if (picked != null) {
-                  setState(() => _selectedDate = picked);
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Data: ${DateTimeUtils.formatDate(_selectedDate)}', style: const TextStyle(color: AppColors.textPrimary)),
-                    const Icon(Icons.calendar_today, size: 18, color: AppColors.textSecondary),
-                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
+            ],
+          ),
+          const SizedBox(height: 24),
 
-            // 5. Categoria (Filtrada por Tipo)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _type == TransactionType.income ? 'Categoria de Receita' : 'Categoria de Despesa',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold),
+          TextField(
+            controller: _descController,
+            textCapitalization: TextCapitalization.sentences,
+            style: Sumi.body.copyWith(fontSize: 15),
+            decoration: underlineDecoration('Descrição', hint: 'Ex: Mercado, Uber, Almoço'),
+          ),
+          const SizedBox(height: 20),
+
+          Row(
+            children: [
+              Expanded(child: _TapField(label: 'Data', value: _dateLabel(_selectedDate), onTap: _pickDate)),
+              const SizedBox(width: 16),
+              Expanded(child: _TapField(label: 'Repetir', value: recurrenceLabel, onTap: _pickRecurrence)),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          const Text('Categoria', style: Sumi.caption),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final cat in categories)
+                ChoiceChipSumi(
+                  label: cat.name,
+                  selected: cat.id == _selectedCategoryId,
+                  onTap: () => setState(() => _selectedCategoryId = cat.id),
                 ),
-                TextButton(
-                  onPressed: () async {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => CategoriesManagementScreen(notifier: widget.notifier)),
-                    );
-                    setState(() {});
-                  },
-                  style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
-                  child: const Text('+ Gerenciar', style: TextStyle(fontSize: 12, color: AppColors.primary)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            DropdownButtonFormField<String>(
-              value: availableCategories.any((c) => c.id == _selectedCategoryId)
-                  ? _selectedCategoryId
-                  : (availableCategories.isNotEmpty ? availableCategories.first.id : null),
-              dropdownColor: AppColors.surface,
-              decoration: const InputDecoration(labelText: 'Categoria'),
-              items: availableCategories.map((Category cat) {
-                Color catColor;
-                try {
-                  catColor = Color(int.parse(cat.colorHex));
-                } catch (_) {
-                  catColor = AppColors.primary;
-                }
-
-                return DropdownMenuItem<String>(
-                  value: cat.id,
-                  child: Row(
-                    children: [
-                      Icon(CategoriesManagementScreen.getIconData(cat.icon), size: 16, color: catColor),
-                      const SizedBox(width: 8),
-                      Text(cat.name, style: const TextStyle(color: AppColors.textPrimary)),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (val) {
-                if (val != null) setState(() => _selectedCategoryId = val);
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Se for despesa, exibe forma de pagamento, parcelas e terceiro
-            if (_type == TransactionType.expense) ...[
-              // Forma de pagamento
-              const Text('Forma de Pagamento', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  _buildPaymentChip(PaymentMethod.pix, 'Pix (Imediato)', Icons.pix),
-                  const SizedBox(width: 8),
-                  _buildPaymentChip(PaymentMethod.creditCard, 'Cartão de Crédito', Icons.credit_card),
-                  const SizedBox(width: 8),
-                  _buildPaymentChip(PaymentMethod.cash, 'Dinheiro', Icons.attach_money),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Seletor de Cartão & Parcelas
-              if (_paymentMethod == PaymentMethod.creditCard) ...[
-                if (cards.isNotEmpty) ...[
-                  DropdownButtonFormField<String>(
-                    value: _selectedCardId ?? cards.first.id,
-                    dropdownColor: AppColors.surface,
-                    decoration: const InputDecoration(labelText: 'Cartão'),
-                    items: cards.map((c) {
-                      return DropdownMenuItem(
-                        value: c.id,
-                        child: Text(c.name, style: const TextStyle(color: AppColors.textPrimary)),
-                      );
-                    }).toList(),
-                    onChanged: (val) => setState(() => _selectedCardId = val),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                // Parcelamento
-                DropdownButtonFormField<int>(
-                  value: _installments,
-                  dropdownColor: AppColors.surface,
-                  decoration: const InputDecoration(labelText: 'Parcelas'),
-                  items: List.generate(24, (i) => i + 1).map((n) {
-                    final amountVal = CurrencyUtils.parse(_amountController.text) ?? 0.0;
-                    final parcelVal = n > 0 && amountVal > 0 ? (amountVal / n).toStringAsFixed(2) : '0,00';
-                    return DropdownMenuItem(
-                      value: n,
-                      child: Text(
-                        n == 1 ? '1x (À vista na fatura)' : '${n}x de R\$ $parcelVal',
-                        style: const TextStyle(color: AppColors.textPrimary),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    if (val != null) setState(() => _installments = val);
-                  },
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Quem vai pagar? (Gastos para Terceiros)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Quem vai pagar? (Responsável)', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton(
-                        onPressed: _showAddPersonDialog,
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
-                        child: const Text('+ Nova', style: TextStyle(fontSize: 12, color: AppColors.primary)),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => PeopleManagementScreen(notifier: widget.notifier),
-                            ),
-                          );
-                        },
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
-                        child: const Text('Gerenciar', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
-                value: _selectedPersonId,
-                dropdownColor: AppColors.surface,
-                decoration: const InputDecoration(labelText: 'Responsável'),
-                items: people.map((p) {
-                  return DropdownMenuItem(
-                    value: p.id,
-                    child: Text(
-                      p.isMe ? 'Eu (Gasto Pessoal)' : '${p.name} (Gerar Reembolso)',
-                      style: TextStyle(
-                        color: p.isMe ? AppColors.textPrimary : AppColors.reimbursement,
-                        fontWeight: p.isMe ? FontWeight.normal : FontWeight.bold,
-                      ),
-                    ),
+              ChoiceChipSumi(
+                label: 'Gerenciar',
+                selected: false,
+                semanticLabel: 'Gerenciar categorias',
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => CategoriesManagementScreen(notifier: widget.notifier)),
                   );
-                }).toList(),
-                onChanged: (val) {
-                  if (val != null) setState(() => _selectedPersonId = val);
+                  if (mounted) setState(() {});
                 },
               ),
-              const SizedBox(height: 16),
             ],
+          ),
 
-            // Recorrência (Diária, Semanal, Mensal, Anual, etc.)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _isRecurring ? AppColors.primary.withValues(alpha: 0.5) : AppColors.border),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
+          if (_isExpense) ...[
+            const SizedBox(height: 24),
+            const Text('Forma de pagamento', style: Sumi.caption),
+            const SizedBox(height: 8),
+            SegmentedChoice<PaymentMethod>(
+              options: const [
+                (PaymentMethod.pix, 'Pix'),
+                (PaymentMethod.cash, 'Dinheiro/Débito'),
+                (PaymentMethod.creditCard, 'Cartão'),
+              ],
+              value: _paymentMethod,
+              onChanged: (m) => setState(() => _paymentMethod = m),
+            ),
+            if (_isCard) ...[
+              const SizedBox(height: 20),
+              if (cards.isEmpty)
+                LedgerLine(
+                  label: 'Nenhum cartão cadastrado',
+                  value: '',
+                  detail: 'Toque para cadastrar um cartão',
+                  showBottomBorder: true,
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => InvoicesScreen(notifier: widget.notifier)),
+                    );
+                    if (!mounted) return;
+                    setState(() => _selectedCardId ??= widget.notifier.state.cards.firstOrNull?.id);
+                  },
+                )
+              else ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.repeat, color: _isRecurring ? AppColors.primary : AppColors.textSecondary, size: 20),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          const Text('Cartão', style: Sumi.caption),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
-                              Text(
-                                _type == TransactionType.income ? 'Receita Recorrente?' : 'Despesa Recorrente?',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary),
-                              ),
-                              Text(
-                                _isRecurring ? 'Repete automaticamente (${_recurrenceLabel(_recurrence)})' : 'Lançamento único',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                              ),
+                              for (final card in cards)
+                                ChoiceChipSumi(
+                                  label: card.name,
+                                  selected: card.id == _selectedCardId,
+                                  onTap: () => setState(() => _selectedCardId = card.id),
+                                ),
                             ],
                           ),
                         ],
                       ),
-                      Switch(
-                        value: _isRecurring,
-                        activeColor: AppColors.primary,
-                        onChanged: (val) => setState(() => _isRecurring = val),
-                      ),
-                    ],
-                  ),
-                  if (_isRecurring) ...[
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<RecurrenceFrequency>(
-                      value: _recurrence,
-                      dropdownColor: AppColors.surface,
-                      decoration: const InputDecoration(
-                        labelText: 'Frequência da Recorrência',
-                        prefixIcon: Icon(Icons.schedule, size: 18, color: AppColors.primary),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: RecurrenceFrequency.daily, child: Text('Todo dia (Diária)', style: TextStyle(color: AppColors.textPrimary))),
-                        DropdownMenuItem(value: RecurrenceFrequency.weekly, child: Text('Toda semana (Semanal)', style: TextStyle(color: AppColors.textPrimary))),
-                        DropdownMenuItem(value: RecurrenceFrequency.biweekly, child: Text('A cada 15 dias (Quinzenal)', style: TextStyle(color: AppColors.textPrimary))),
-                        DropdownMenuItem(value: RecurrenceFrequency.monthly, child: Text('Todo mês (Mensal)', style: TextStyle(color: AppColors.textPrimary))),
-                        DropdownMenuItem(value: RecurrenceFrequency.yearly, child: Text('Todo ano (Anual)', style: TextStyle(color: AppColors.textPrimary))),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) setState(() => _recurrence = val);
-                      },
+                    ),
+                    const SizedBox(width: 12),
+                    _InstallmentStepper(
+                      value: _installments,
+                      onChanged: (n) => setState(() => _installments = n),
                     ),
                   ],
+                ),
+                if (_installmentHint(selectedCard) case final hint?) ...[
+                  const SizedBox(height: 10),
+                  Text(hint, style: Sumi.caption.copyWith(color: AppColors.textPrimary)),
+                ],
+              ],
+            ],
+            const SizedBox(height: 24),
+            const Text('Quem vai pagar?', style: Sumi.caption),
+            const SizedBox(height: 8),
+            SegmentedChoice<bool>(
+              options: const [(false, 'Eu'), (true, 'Outra pessoa')],
+              value: _isForOther,
+              onChanged: (other) => setState(() {
+                _selectedPersonId = other ? (people.firstOrNull?.id ?? '') : 'ME';
+              }),
+            ),
+            if (_isForOther) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final p in people)
+                    ChoiceChipSumi(
+                      label: p.name,
+                      selected: p.id == _selectedPersonId,
+                      onTap: () => setState(() => _selectedPersonId = p.id),
+                    ),
+                  ChoiceChipSumi(label: '+ Nova pessoa', selected: false, onTap: _addPerson),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-
-            // Observações
-            TextField(
-              controller: _notesController,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Observação (Opcional)',
+              const SizedBox(height: 10),
+              const Text(
+                'Não entra no seu gasto pessoal: vira uma cobrança para a pessoa.',
+                style: Sumi.caption,
               ),
-            ),
-            const SizedBox(height: 24),
+            ],
           ],
-        ),
+
+          const SizedBox(height: 24),
+          TextField(
+            controller: _notesController,
+            textCapitalization: TextCapitalization.sentences,
+            style: Sumi.body,
+            decoration: underlineDecoration('Observação (opcional)'),
+          ),
+        ],
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _saveTransaction,
-              child: const Text('Confirmar Lançamento', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(Sumi.gutter, 12, Sumi.gutter, 12),
+            child: SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: ElevatedButton(onPressed: _saveTransaction, child: const Text('Confirmar lançamento')),
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildPaymentChip(PaymentMethod method, String label, IconData icon) {
-    final isSelected = _paymentMethod == method;
-    return Expanded(
+class _TapField extends StatelessWidget {
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  const _TapField({required this.label, required this.value, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$label: $value',
+      excludeSemantics: true,
       child: InkWell(
-        onTap: () => setState(() => _paymentMethod = method),
+        onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.primary.withOpacity(0.2) : AppColors.surface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: isSelected ? AppColors.primary : AppColors.border),
-          ),
+          constraints: const BoxConstraints(minHeight: 52),
+          padding: const EdgeInsets.only(bottom: 8),
+          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.borderStrong))),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Icon(icon, size: 18, color: isSelected ? AppColors.primary : AppColors.textSecondary),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
+              Text(label, style: Sumi.caption),
+              const SizedBox(height: 6),
+              Text(value, style: Sumi.body.copyWith(fontSize: 15)),
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  void _showAddPersonDialog() {
-    final nameCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: const Text('Cadastrar Pessoa', style: TextStyle(color: AppColors.textPrimary)),
-          content: TextField(
-            controller: nameCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(labelText: 'Nome (ex: Mãe, Namorada)'),
+class _InstallmentStepper extends StatelessWidget {
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  const _InstallmentStepper({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Parcelas', style: Sumi.caption),
+        const SizedBox(height: 4),
+        Container(
+          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.borderStrong))),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Menos parcelas',
+                icon: const Icon(Icons.remove, size: 18),
+                onPressed: value > 1 ? () => onChanged(value - 1) : null,
+              ),
+              SizedBox(
+                width: 36,
+                child: Text('${value}x', textAlign: TextAlign.center, style: Sumi.figures(18)),
+              ),
+              IconButton(
+                tooltip: 'Mais parcelas',
+                icon: const Icon(Icons.add, size: 18),
+                onPressed: value < 24 ? () => onChanged(value + 1) : null,
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final name = nameCtrl.text.trim();
-                if (name.isNotEmpty) {
-                  widget.notifier.addPerson(name);
-                  Navigator.of(ctx).pop();
-                }
-              },
-              child: const Text('Adicionar'),
-            ),
-          ],
-        );
-      },
+        ),
+      ],
     );
   }
 }

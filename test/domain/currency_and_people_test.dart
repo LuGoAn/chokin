@@ -21,21 +21,18 @@ void main() {
     test('CurrencyTextInputFormatter formats numeric input progressivelty as Brazilian currency', () {
       final formatter = CurrencyTextInputFormatter();
 
-      // Digitando '2' -> 0,02
       var result = formatter.formatEditUpdate(
         TextEditingValue.empty,
         const TextEditingValue(text: '2'),
       );
       expect(result.text, equals('0,02'));
 
-      // Digitando '25' -> 0,25
       result = formatter.formatEditUpdate(
         const TextEditingValue(text: '0,02'),
         const TextEditingValue(text: '0025'),
       );
       expect(result.text, equals('0,25'));
 
-      // Digitando '2536' -> 25,36
       result = formatter.formatEditUpdate(
         const TextEditingValue(text: '0,25'),
         const TextEditingValue(text: '2536'),
@@ -71,9 +68,9 @@ void main() {
         dueDay: 8,
       );
 
-      var state = FinancialState(
-        availableBalance: 0.0,
-        reserveBalance: 0.0,
+      var state = FinancialState.reconciled(
+        availableCents: 0,
+        reserveCents: 0,
         transactions: [],
         invoices: [],
         installments: [],
@@ -86,11 +83,10 @@ void main() {
         ],
       );
 
-      // Compra de R$ 1.000 em 10x para o Pai
       final tvTx = FinancialTransaction(
         id: 'tx_tv',
         description: 'TV Sala para o Pai',
-        amount: 1000.0,
+        amountCents: 100000,
         purchaseDate: DateTime(2026, 8, 10),
         categoryId: 'cat_electronics',
         paymentMethod: PaymentMethod.creditCard,
@@ -104,8 +100,6 @@ void main() {
         transaction: tvTx,
       );
 
-      // Em Agosto (mês da compra):
-      // A compra parcela 1/10 está prevista para Agosto e o total pendente é R$ 1.000
       final summaryAug = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 8,
@@ -117,18 +111,14 @@ void main() {
       expect(summaryAug.freeBalance, equals(0.0));
       expect(summaryAug.periodCreditPurchases, equals(0.0));
 
-      // Em Setembro (mês seguinte da 2ª parcela de R$ 100 da TV):
       final summarySep = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 9,
         year: 2026,
       );
-      // Saldo Comprometido da fatura de Setembro = R$ 100
       expect(summarySep.committedBalance, equals(100.0));
-      // Total a Receber do Pai em Setembro = R$ 100
       expect(summarySep.pendingReimbursements, equals(100.0));
       expect(summarySep.totalPendingReimbursements, equals(1000.0));
-      // Saldo Livre Real NÃO fica negativo: (0 + 0 + 100) - 100 = 0.0
       expect(summarySep.freeBalance, equals(0.0));
     });
   });

@@ -1,11 +1,13 @@
+import '../../core/utils/money.dart';
+
 class Installment {
   final String id;
-  final String transactionId; // ID da compra mãe
-  final String invoiceId;     // ID da fatura à qual esta parcela pertence
-  final int installmentNumber;// ex: 1
-  final int totalInstallments;// ex: 6
-  final double amount;        // ex: 200.00
-  final String? personId;     // Se for compra para terceiro (ex: mãe, namorada)
+  final String transactionId;
+  final String invoiceId;
+  final int installmentNumber;
+  final int totalInstallments;
+  final int amountCents;
+  final String? personId;
 
   const Installment({
     required this.id,
@@ -13,9 +15,11 @@ class Installment {
     required this.invoiceId,
     required this.installmentNumber,
     required this.totalInstallments,
-    required this.amount,
+    required this.amountCents,
     this.personId,
   });
+
+  double get amount => Money.toReais(amountCents);
 
   String get label => '$installmentNumber/$totalInstallments';
 
@@ -26,7 +30,7 @@ class Installment {
       'invoiceId': invoiceId,
       'installmentNumber': installmentNumber,
       'totalInstallments': totalInstallments,
-      'amount': amount,
+      'amountCents': amountCents,
       'personId': personId,
     };
   }
@@ -38,7 +42,7 @@ class Installment {
       invoiceId: map['invoiceId'] as String,
       installmentNumber: map['installmentNumber'] as int,
       totalInstallments: map['totalInstallments'] as int,
-      amount: (map['amount'] as num).toDouble(),
+      amountCents: map['amountCents'] as int,
       personId: map['personId'] as String?,
     );
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/sumi.dart';
 import '../../../core/utils/currency_utils.dart';
+import '../../../domain/engine/financial_movement_engine.dart';
 import '../../../domain/entities/person.dart';
 import '../../state/financial_state_notifier.dart';
 
@@ -20,129 +22,101 @@ class _PeopleManagementScreenState extends State<PeopleManagementScreen> {
       listenable: widget.notifier,
       builder: (context, _) {
         final state = widget.notifier.state;
-        final people = state.people;
-        final reimbursements = state.reimbursements;
+        final people = List.of(state.people)
+          ..sort((a, b) => a.isMe != b.isMe ? (a.isMe ? -1 : 1) : a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Gerenciar Pessoas', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: const Text('Pessoas'),
             actions: [
               IconButton(
-                tooltip: 'Nova Pessoa',
-                icon: const Icon(Icons.person_add, color: AppColors.primary),
-                onPressed: () => _showPersonDialog(context),
+                  tooltip: 'Nova pessoa', icon: const Icon(Icons.add), onPressed: () => _showPersonDialog(context)),
+            ],
+          ),
+          body: ListView(
+            padding: const EdgeInsets.fromLTRB(Sumi.gutter, 4, Sumi.gutter, 32),
+            children: [
+              const Text(
+                'Quando uma compra é para outra pessoa, ela vira uma cobrança e fica fora do seu gasto pessoal.',
+                style: Sumi.caption,
+              ),
+              const SizedBox(height: 16),
+              for (var i = 0; i < people.length; i++)
+                _buildPersonRow(context, state, people[i], isLast: i == people.length - 1),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child:
+                    OutlinedButton(onPressed: () => _showPersonDialog(context), child: const Text('Adicionar pessoa')),
               ),
             ],
           ),
-          body: people.isEmpty
-              ? const Center(
-                  child: Text('Nenhuma pessoa cadastrada.', style: TextStyle(color: AppColors.textMuted)),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: people.length,
-                  itemBuilder: (ctx, index) {
-                    final person = people[index];
-                    final isMe = person.isMe;
-
-                    final personReimbursements = reimbursements.where((r) => r.personId == person.id && !r.isSettled).toList();
-                    final pendingTotal = personReimbursements.fold<double>(0.0, (acc, r) => acc + r.remainingAmount);
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: pendingTotal > 0 ? AppColors.reimbursement.withValues(alpha: 0.3) : AppColors.border,
-                        ),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        leading: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: isMe
-                              ? AppColors.primary.withValues(alpha: 0.15)
-                              : AppColors.reimbursement.withValues(alpha: 0.15),
-                          child: Icon(
-                            isMe ? Icons.account_circle : Icons.person_outline,
-                            color: isMe ? AppColors.primaryLight : AppColors.reimbursement,
-                            size: 24,
-                          ),
-                        ),
-                        title: Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                person.name,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
-                              ),
-                            ),
-                            if (isMe) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: const Text(
-                                  'EU / TITULAR',
-                                  style: TextStyle(color: AppColors.primaryLight, fontSize: 10, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            if (person.phone != null && person.phone!.isNotEmpty)
-                              Text(
-                                'Tel: ${person.phone}',
-                                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                              ),
-                            if (!isMe)
-                              Text(
-                                pendingTotal > 0
-                                    ? 'A receber: ${CurrencyUtils.format(pendingTotal)} (${personReimbursements.length} pendência${personReimbursements.length > 1 ? "s" : ""})'
-                                    : 'Nenhum valor pendente',
-                                style: TextStyle(
-                                  color: pendingTotal > 0 ? AppColors.reimbursement : AppColors.textMuted,
-                                  fontSize: 12,
-                                  fontWeight: pendingTotal > 0 ? FontWeight.bold : FontWeight.normal,
-                                ),
-                              ),
-                          ],
-                        ),
-                        trailing: isMe
-                            ? null
-                            : Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined, color: AppColors.textSecondary, size: 20),
-                                    onPressed: () => _showPersonDialog(context, personToEdit: person),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline, color: AppColors.expense, size: 20),
-                                    onPressed: () => _confirmDeletePerson(context, person, pendingTotal),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    );
-                  },
-                ),
-          floatingActionButton: FloatingActionButton.extended(
-            backgroundColor: AppColors.primary,
-            icon: const Icon(Icons.person_add, color: Colors.white),
-            label: const Text('Nova Pessoa', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-            onPressed: () => _showPersonDialog(context),
-          ),
         );
       },
+    );
+  }
+
+  Widget _buildPersonRow(BuildContext context, FinancialState state, Person person, {required bool isLast}) {
+    final pending = state.reimbursements.where((r) => r.personId == person.id && !r.isSettled).toList();
+    final pendingCents = pending.fold<int>(0, (acc, r) => acc + r.remainingAmountCents);
+    final details = [
+      if (person.phone != null && person.phone!.isNotEmpty) person.phone!,
+      if (person.isMe)
+        'seus gastos pessoais'
+      else if (pendingCents > 0)
+        'a receber ${CurrencyUtils.formatCents(pendingCents)} em ${pending.length} compra${pending.length > 1 ? 's' : ''}'
+      else
+        'nada pendente',
+    ];
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 60),
+      decoration: BoxDecoration(
+        border: Border(
+          top: const BorderSide(color: AppColors.border),
+          bottom: isLast ? const BorderSide(color: AppColors.border) : BorderSide.none,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(child: Text(person.name, style: Sumi.bodyStrong)),
+                      if (person.isMe) ...[
+                        const SizedBox(width: 8),
+                        const Text(
+                          'VOCÊ',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(details.join(' · '), style: Sumi.caption),
+                ],
+              ),
+            ),
+          ),
+          if (!person.isMe) ...[
+            IconButton(
+              tooltip: 'Editar ${person.name}',
+              icon: const Icon(Icons.edit_outlined, size: 20, color: AppColors.textSecondary),
+              onPressed: () => _showPersonDialog(context, personToEdit: person),
+            ),
+            IconButton(
+              tooltip: 'Excluir ${person.name}',
+              icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textSecondary),
+              onPressed: () => _confirmDeletePerson(context, person, pendingCents / 100),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -157,8 +131,7 @@ class _PeopleManagementScreenState extends State<PeopleManagementScreen> {
         return AlertDialog(
           backgroundColor: AppColors.surface,
           title: Text(
-            isEditing ? 'Editar Pessoa' : 'Adicionar Pessoa',
-            style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+            isEditing ? 'Editar pessoa' : 'Nova pessoa',
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -228,7 +201,7 @@ class _PeopleManagementScreenState extends State<PeopleManagementScreen> {
       builder: (dCtx) {
         return AlertDialog(
           backgroundColor: AppColors.surface,
-          title: const Text('Excluir Pessoa?', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+          title: const Text('Excluir pessoa?'),
           content: Text(
             pendingTotal > 0
                 ? 'Atenção: "${person.name}" possui ${CurrencyUtils.format(pendingTotal)} em cobranças pendentes.\n\nDeseja realmente remover o cadastro?'

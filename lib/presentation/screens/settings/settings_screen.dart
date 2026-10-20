@@ -4,10 +4,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/sumi.dart';
 import '../../../core/utils/currency_utils.dart';
 import '../../../core/utils/date_time_utils.dart';
 import '../../../data/backup/backup_service.dart';
 import '../../../data/export/csv_export_service.dart';
+import '../../widgets/sumi_widgets.dart';
 import '../categories/categories_management_screen.dart';
 import '../people/people_management_screen.dart';
 import '../../../domain/engine/financial_movement_engine.dart';
@@ -39,14 +41,18 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   }
 
   Future<void> _loadAutoBackupSettings() async {
-    final freq = await widget.notifier.backupService.getAutoBackupFrequency();
-    final last = await widget.notifier.backupService.getLastAutoBackupDate();
-    final dir = await widget.notifier.backupService.getBackupDirectory();
+    final backup = widget.notifier.backupService;
+    final freq = await backup.getAutoBackupFrequency().catchError((_) => AutoBackupFrequency.disabled);
+    final last = await backup.getLastAutoBackupDate().catchError((_) => null);
+    String? dirPath;
+    try {
+      dirPath = (await backup.getBackupDirectory()).path;
+    } catch (_) {}
     if (mounted) {
       setState(() {
         _autoBackupFreq = freq;
         _lastAutoBackupDate = last;
-        _backupDirPath = dir.path;
+        _backupDirPath = dirPath;
       });
     }
   }
@@ -92,332 +98,218 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
-    final state = widget.notifier.state;
+    return ListenableBuilder(
+      listenable: widget.notifier,
+      builder: (context, _) {
+        final state = widget.notifier.state;
+        final lastBackup = _lastAutoBackupDate;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Configurações & Backup', style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // 1. Ajuste de Saldos Iniciais & Categorias
-          _buildSectionHeader('Finanças & Pessoas'),
-          Builder(
-            builder: (_) {
-              final now = DateTime.now();
-              final (currentAvail, currentReserve) = FinancialMovementEngine.calculateHistoricalBalances(
-                state: state,
-                month: now.month,
-                year: now.year,
-              );
-              return _buildSettingsTile(
-                icon: Icons.account_balance,
-                title: 'Configurar Saldo Inicial',
-                subtitle: 'Saldo configurado: ${CurrencyUtils.format(currentAvail + currentReserve)}',
+        return Scaffold(
+          appBar: AppBar(title: const Text('Ajustes')),
+          body: ListView(
+            padding: const EdgeInsets.fromLTRB(Sumi.gutter, 4, Sumi.gutter, 32),
+            children: [
+              const SectionTitle('Saldo e cadastros'),
+              const SizedBox(height: 4),
+              _SettingsRow(
+                title: 'Ajustar saldo disponível',
+                subtitle: 'A diferença fica registrada como ajuste',
+                value: CurrencyUtils.formatCents(state.availableCents),
                 onTap: _showInitialBalancesDialog,
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-          _buildSettingsTile(
-            icon: Icons.people_outline,
-            title: 'Gerenciar Pessoas & Contatos',
-            subtitle: 'Adicione, edite ou remova pessoas para quem você faz compras',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => PeopleManagementScreen(notifier: widget.notifier),
+              ),
+              _SettingsRow(
+                title: 'Pessoas',
+                subtitle: 'Quem pode receber cobranças das suas compras',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => PeopleManagementScreen(notifier: widget.notifier)),
                 ),
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-          _buildSettingsTile(
-            icon: Icons.category,
-            title: 'Gerenciar Categorias',
-            subtitle: 'Adicione, edite, exclua e reordene categorias de despesa e receita',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => CategoriesManagementScreen(notifier: widget.notifier),
+              ),
+              _SettingsRow(
+                title: 'Categorias',
+                subtitle: 'Criar, editar e reordenar categorias de despesa e receita',
+                isLast: true,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => CategoriesManagementScreen(notifier: widget.notifier)),
                 ),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-
-          // 2. Leitura de Notificações Android
-          _buildSectionHeader('Automação & Notificações Android'),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Leitura de Notificações', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textPrimary)),
-                          const SizedBox(height: 2),
-                          Text(
-                            !_notificationAccessGranted
-                                ? 'Permissão desativada nas configurações'
-                                : (_serviceConnected
-                                    ? 'Serviço ativo e conectado ao Android'
-                                    : 'Permissão concedida (aguardando sistema)'),
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-                          ),
-                        ],
-                      ),
+              ),
+              const SizedBox(height: 32),
+              const SectionTitle('Leitor de notificações'),
+              const SizedBox(height: 12),
+              _buildReaderStatus(),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: _notificationAccessGranted
+                    ? OutlinedButton(
+                        onPressed: _openPermissionSettings, child: const Text('Revisar permissão no Android'))
+                    : ElevatedButton(
+                        onPressed: _openPermissionSettings, child: const Text('Permitir leitura de notificações')),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        await widget.notifier.notificationBridge.rebindService();
+                        await _checkPermission();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(_serviceConnected
+                                  ? 'Leitor reconectado.'
+                                  : 'Pedido de reconexão enviado ao Android.'),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Reconectar'),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: (!_notificationAccessGranted
-                                ? AppColors.expense
-                                : (_serviceConnected ? AppColors.income : Colors.orange))
-                            .withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        !_notificationAccessGranted
-                            ? 'DESATIVADO'
-                            : (_serviceConnected ? 'ATIVO (CONECTADO)' : 'AGUARDANDO SO'),
-                        style: TextStyle(
-                          color: !_notificationAccessGranted
-                              ? AppColors.expense
-                              : (_serviceConnected ? AppColors.income : Colors.orange),
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        await widget.notifier.simulateTestNotification();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Notificação de teste enviada. Veja em Mais › Caixa de entrada.'),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Enviar teste'),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      await widget.notifier.notificationBridge.openPermissionSettings();
-                      await Future.delayed(const Duration(seconds: 1));
-                      _checkPermission();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.surfaceLight,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
+                  ),
+                ],
+              ),
+              _SettingsRow(
+                title: 'Xiaomi, Poco e Redmi (HyperOS)',
+                subtitle: 'O que liberar para o leitor não ser fechado pelo sistema',
+                isLast: true,
+                onTap: _showXiaomiPocoGuideDialog,
+              ),
+              const SizedBox(height: 32),
+              const SectionTitle('Backup e exportação'),
+              const SizedBox(height: 4),
+              _SettingsRow(
+                title: 'Exportar planilha (CSV)',
+                subtitle: 'Extrato compatível com Excel, por mês, ano ou período',
+                onTap: _exportCsvDialog,
+              ),
+              _SettingsRow(
+                title: 'Backup automático',
+                subtitle: lastBackup == null
+                    ? 'Nenhum backup automático feito ainda'
+                    : 'Último: ${DateTimeUtils.formatDateTime(lastBackup)}',
+                value: _autoBackupLabel(_autoBackupFreq),
+                onTap: _showAutoBackupDialog,
+              ),
+              _SettingsRow(
+                title: 'Fazer backup agora',
+                subtitle: 'Arquivo JSON com todos os seus dados',
+                onTap: _exportBackupDialog,
+              ),
+              _SettingsRow(
+                title: 'Restaurar backup',
+                subtitle: 'Substitui os dados atuais pelos de um arquivo JSON',
+                isLast: true,
+                onTap: _importBackupDialog,
+              ),
+              const SizedBox(height: 32),
+              const SectionTitle('Aplicativo'),
+              const SizedBox(height: 4),
+              _SettingsRow(
+                title: 'Verificar atualizações',
+                subtitle: 'Procura uma versão nova no GitHub',
+                value: 'v${UpdateService.currentVersion}',
+                onTap: _checkUpdatesManually,
+              ),
+              _SettingsRow(
+                title: 'Token do GitHub',
+                subtitle: 'Usado para consultar as versões do repositório',
+                isLast: true,
+                onTap: _showGithubTokenDialog,
+              ),
+              const SizedBox(height: 32),
+              const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lock_outline, size: 16, color: AppColors.textSecondary),
+                  SizedBox(width: 10),
+                  Expanded(
                     child: Text(
-                      _notificationAccessGranted ? 'Revisar Permissões no Android' : 'Conceder Permissão de Leitura',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+                      'Seus dados ficam só neste celular. O Chokin não envia nada para servidores; '
+                      'a única consulta externa é a de novas versões.',
+                      style: Sumi.caption,
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.sync, size: 15),
-                        label: const Text('Reconectar', style: TextStyle(fontSize: 12)),
-                        onPressed: () async {
-                          await widget.notifier.notificationBridge.rebindService();
-                          await _checkPermission();
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(_serviceConnected
-                                    ? 'Leitor reconectado com sucesso ao Android!'
-                                    : 'Sinal de reconexão enviado ao sistema.'),
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.science_outlined, size: 15),
-                        label: const Text('Testar Inbox', style: TextStyle(fontSize: 12)),
-                        onPressed: () async {
-                          await widget.notifier.simulateTestNotification();
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Notificação de teste (R\$ 25,50) enviada! Veja na aba Inbox.'),
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                InkWell(
-                  onTap: _showXiaomiPocoGuideDialog,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.primary.withOpacity(0.2)),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.phone_android, size: 16, color: AppColors.primaryLight),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Instruções para Xiaomi, Poco e Redmi (HyperOS)',
-                            style: TextStyle(fontSize: 11, color: AppColors.primaryLight, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Icon(Icons.chevron_right, size: 16, color: AppColors.primaryLight),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-
-          // 3. Exportação & Backup 100% Local
-          _buildSectionHeader('Exportação & Backup 100% Local'),
-          _buildSettingsTile(
-            icon: Icons.table_chart_outlined,
-            title: 'Exportar em Planilha (CSV)',
-            subtitle: 'Gera extrato/faturas em formato .csv compatível com Excel',
-            onTap: _exportCsvDialog,
-          ),
-          const SizedBox(height: 8),
-          _buildSettingsTile(
-            icon: Icons.schedule_outlined,
-            title: 'Backup Automático',
-            subtitle: 'Frequência: ${_autoBackupLabel(_autoBackupFreq)}',
-            onTap: _showAutoBackupDialog,
-          ),
-          const SizedBox(height: 8),
-          _buildSettingsTile(
-            icon: Icons.upload_file,
-            title: 'Exportar Backup Completo (JSON)',
-            subtitle: 'Gera cópia de segurança completa de transações, faturas e pessoas',
-            onTap: _exportBackupDialog,
-          ),
-          const SizedBox(height: 8),
-          _buildSettingsTile(
-            icon: Icons.download_for_offline,
-            title: 'Restaurar Backup (JSON)',
-            subtitle: 'Importa arquivo de backup e reconstrói o estado financeiro',
-            onTap: _importBackupDialog,
-          ),
-          const SizedBox(height: 24),
-
-          // 4. Garantia de Privacidade
-          // 4. Aplicativo & Atualizações
-          _buildSectionHeader('Aplicativo & Atualizações'),
-          _buildSettingsTile(
-            icon: Icons.system_update_alt,
-            title: 'Verificar Atualizações',
-            subtitle: 'Versão instalada: v${UpdateService.currentVersion} • Toque para checar no GitHub',
-            onTap: _checkUpdatesManually,
-          ),
-          const SizedBox(height: 8),
-          _buildSettingsTile(
-            icon: Icons.vpn_key_outlined,
-            title: 'Token do GitHub',
-            subtitle: 'Configurado para repositório privado • Toque para alterar',
-            onTap: _showGithubTokenDialog,
-          ),
-          const SizedBox(height: 16),
-
-          // 5. Aviso de Privacidade Offline
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.lock_outline, color: AppColors.primaryLight, size: 24),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('100% Offline & Seguro', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontSize: 13)),
-                      SizedBox(height: 2),
-                      Text(
-                        'Nenhum dado é enviado para servidores externos. Suas finanças ficam exclusivamente no seu celular.',
-                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 4),
-      child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
-    );
+  Future<void> _openPermissionSettings() async {
+    await widget.notifier.notificationBridge.openPermissionSettings();
+    await Future.delayed(const Duration(seconds: 1));
+    _checkPermission();
   }
 
-  Widget _buildSettingsTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: AppColors.background,
-          child: Icon(icon, color: AppColors.primaryLight, size: 20),
+  Widget _buildReaderStatus() {
+    final (IconData icon, Color color, String title, String detail) = !_notificationAccessGranted
+        ? (
+            Icons.block,
+            AppColors.primary,
+            'Desativado',
+            'O Android ainda não permite que o Chokin leia as notificações dos bancos.',
+          )
+        : (_serviceConnected
+            ? (
+                Icons.check_circle_outline,
+                AppColors.income,
+                'Ativo e conectado',
+                'Compras notificadas pelos bancos chegam na Caixa de entrada.',
+              )
+            : (
+                Icons.hourglass_empty,
+                AppColors.warning,
+                'Aguardando o Android',
+                'A permissão foi dada, mas o sistema ainda não ligou o leitor. Tente Reconectar.',
+              ));
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Sumi.bodyStrong),
+              const SizedBox(height: 2),
+              Text(detail, style: Sumi.caption),
+            ],
+          ),
         ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.textPrimary)),
-        subtitle: Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
-        trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 18),
-        onTap: onTap,
-      ),
+      ],
     );
   }
 
   void _showInitialBalancesDialog() {
     final state = widget.notifier.state;
     final now = DateTime.now();
-    final (currentAvail, currentReserve) = FinancialMovementEngine.calculateHistoricalBalances(
+    final (currentAvail, _) = FinancialMovementEngine.calculateHistoricalBalances(
       state: state,
       month: now.month,
       year: now.year,
     );
-    final totalSaldo = currentAvail + currentReserve;
-    final saldoCtrl = TextEditingController(text: totalSaldo.toStringAsFixed(2).replaceAll('.', ','));
+    final saldoCtrl = TextEditingController(text: currentAvail.toStringAsFixed(2).replaceAll('.', ','));
 
     showDialog(
       context: context,
@@ -432,7 +324,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 controller: saldoCtrl,
                 keyboardType: TextInputType.number,
                 inputFormatters: [CurrencyTextInputFormatter()],
-                decoration: const InputDecoration(labelText: 'Saldo Inicial no Banco (R\$)', prefixText: 'R\$ '),
+                decoration: const InputDecoration(labelText: 'Saldo disponível hoje (R\$)', prefixText: 'R\$ '),
               ),
             ],
           ),
@@ -440,11 +332,11 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
             ElevatedButton(
               onPressed: () {
-                final saldo = CurrencyUtils.parse(saldoCtrl.text) ?? 0.0;
-                widget.notifier.setInitialBalances(available: saldo, reserve: 0.0);
+                final saldo = CurrencyUtils.parseCents(saldoCtrl.text) ?? 0;
+                widget.notifier.setInitialBalances(availableCents: saldo);
                 Navigator.of(ctx).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Saldo atualizado com sucesso!')),
+                  const SnackBar(content: Text('Saldo atualizado! A diferença ficou registrada como ajuste.')),
                 );
               },
               child: const Text('Salvar'),
@@ -469,7 +361,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('O JSON do backup foi gerado. Você pode salvar em arquivo ou copiar o conteúdo:', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              const Text('O JSON do backup foi gerado. Você pode salvar em arquivo ou copiar o conteúdo:',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
               const SizedBox(height: 12),
               Container(
                 height: 120,
@@ -480,7 +373,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   border: Border.all(color: AppColors.border),
                 ),
                 child: SingleChildScrollView(
-                  child: Text(json, style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textMuted)),
+                  child: Text(json,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: AppColors.textMuted)),
                 ),
               ),
             ],
@@ -492,14 +386,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               label: const Text('Escolher Pasta & Salvar'),
               onPressed: () async {
                 final now = DateTime.now();
-                final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+                final dateStr =
+                    '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
                 final defaultFileName = 'chokin_backup_$dateStr.json';
                 final bytes = Uint8List.fromList(utf8.encode(json));
 
-                // Salva uma cópia de segurança no diretório interno do aplicativo
                 await widget.notifier.backupService.saveBackupToFile(customFileName: defaultFileName);
 
-                // Abre a janela nativa do Android para o usuário escolher o local onde quer salvar
                 final resultUri = await FilePicker.saveFile(
                   dialogTitle: 'Escolha onde deseja salvar o backup do Chokin',
                   fileName: defaultFileName,
@@ -553,8 +446,18 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     DateTime? endDate = now;
 
     final monthsList = [
-      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+      'Janeiro',
+      'Fevereiro',
+      'Março',
+      'Abril',
+      'Maio',
+      'Junho',
+      'Julho',
+      'Agosto',
+      'Setembro',
+      'Outubro',
+      'Novembro',
+      'Dezembro'
     ];
     final yearsList = [now.year - 2, now.year - 1, now.year, now.year + 1];
 
@@ -600,7 +503,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                               child: DropdownButtonFormField<int>(
                                 value: selectedMonth,
                                 decoration: const InputDecoration(labelText: 'Mês', isDense: true),
-                                items: List.generate(12, (i) => DropdownMenuItem(value: i + 1, child: Text(monthsList[i]))),
+                                items: List.generate(
+                                    12, (i) => DropdownMenuItem(value: i + 1, child: Text(monthsList[i]))),
                                 onChanged: (v) => setDialogState(() => selectedMonth = v ?? selectedMonth),
                               ),
                             ),
@@ -638,7 +542,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                     RadioListTile<CsvExportScope>(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Todo o Histórico (Todos os Anos)', style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+                      title: const Text('Todo o Histórico (Todos os Anos)',
+                          style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
                       value: CsvExportScope.allHistory,
                       groupValue: selectedScope,
                       onChanged: (val) => setDialogState(() => selectedScope = val!),
@@ -646,7 +551,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                     RadioListTile<CsvExportScope>(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Período Personalizado (De/Até)', style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+                      title: const Text('Período Personalizado (De/Até)',
+                          style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
                       value: CsvExportScope.customRange,
                       groupValue: selectedScope,
                       onChanged: (val) => setDialogState(() => selectedScope = val!),
@@ -720,10 +626,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                     final fileName = _buildCsvFileName(selectedScope, selectedMonth, selectedYear, startDate, endDate);
                     final bytes = Uint8List.fromList(utf8.encode(csv));
 
-                    // Salva cópia local interna
                     await widget.notifier.backupService.saveExportFile(fileName, csv);
 
-                    // Abre a janela nativa do Android para o usuário escolher a pasta de destino
                     final resultUri = await FilePicker.saveFile(
                       dialogTitle: 'Escolha onde deseja salvar a planilha CSV',
                       fileName: fileName,
@@ -830,13 +734,15 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                       style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
                     const SizedBox(height: 12),
-                    const Text('Frequência do Backup:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                    const Text('Frequência do Backup:',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
                     const SizedBox(height: 4),
                     ...AutoBackupFrequency.values.map((freq) {
                       return RadioListTile<AutoBackupFrequency>(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        title: Text(_autoBackupLabel(freq), style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+                        title: Text(_autoBackupLabel(freq),
+                            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
                         value: freq,
                         groupValue: tempFreq,
                         onChanged: (val) => setDialogState(() => tempFreq = val!),
@@ -955,7 +861,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                       },
                     ),
                     const SizedBox(height: 12),
-                    const Text('Ou cole o conteúdo JSON abaixo:', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    const Text('Ou cole o conteúdo JSON abaixo:',
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                     const SizedBox(height: 6),
                     TextField(
                       controller: jsonCtrl,
@@ -979,7 +886,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                       if (ctx.mounted) Navigator.of(ctx).pop();
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(success ? 'Backup restaurado com sucesso!' : 'Erro ao restaurar backup. Verifique o formato do JSON.')),
+                          SnackBar(
+                              content: Text(success
+                                  ? 'Backup restaurado com sucesso!'
+                                  : 'Erro ao restaurar backup. Verifique o formato do JSON.')),
                         );
                       }
                     }
@@ -1004,7 +914,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             children: [
               Icon(Icons.phone_android, color: AppColors.primary),
               SizedBox(width: 8),
-              Text('Xiaomi, Poco & HyperOS', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              Text('Xiaomi, Poco & HyperOS',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
             ],
           ),
           content: const SingleChildScrollView(
@@ -1017,20 +928,33 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
                 SizedBox(height: 12),
-                Text('1. Início Automático (Autostart):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
-                Text('Toque no botão abaixo "Abrir Configurações do App" e ATIVE a chave "Início automático".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text('1. Início Automático (Autostart):',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text('Toque no botão abaixo "Abrir Configurações do App" e ATIVE a chave "Início automático".',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 SizedBox(height: 8),
-                Text('2. Economia de Bateria:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
-                Text('Em "Economia de Bateria", altere de Economizador MIUI para "Sem restrições".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text('2. Economia de Bateria:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text('Em "Economia de Bateria", altere de Economizador MIUI para "Sem restrições".',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 SizedBox(height: 8),
-                Text('3. Travar com Cadeado (Recentes):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
-                Text('Abra a tela de aplicativos recentes do seu Poco/Xiaomi, segure o dedo sobre o cartão do Chokin e toque no ícone de CADEADO. Isso impede que a limpeza de memória da Xiaomi mate o aplicativo.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text('3. Travar com Cadeado (Recentes):',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text(
+                    'Abra a tela de aplicativos recentes do seu Poco/Xiaomi, segure o dedo sobre o cartão do Chokin e toque no ícone de CADEADO. Isso impede que a limpeza de memória da Xiaomi mate o aplicativo.',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 SizedBox(height: 8),
-                Text('4. Outras Permissões (Pop-up em 2º plano):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
-                Text('Nas configurações do app, vá em "Outras permissões" e permita "Exibir janelas pop-up em segundo plano".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text('4. Outras Permissões (Pop-up em 2º plano):',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text(
+                    'Nas configurações do app, vá em "Outras permissões" e permita "Exibir janelas pop-up em segundo plano".',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 SizedBox(height: 8),
-                Text('5. Configurações Restritas (se a permissão estiver cinza):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
-                Text('Se o Android bloquear a permissão de notificações, abra as Informações do App, toque nos 3 pontinhos no canto superior direito e selecione "Permitir configurações restritas".', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text('5. Configurações Restritas (se a permissão estiver cinza):',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary)),
+                Text(
+                    'Se o Android bloquear a permissão de notificações, abra as Informações do App, toque nos 3 pontinhos no canto superior direito e selecione "Permitir configurações restritas".',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
               ],
             ),
           ),
@@ -1085,7 +1009,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             children: [
               const Icon(Icons.system_update_rounded, color: AppColors.primary, size: 22),
               const SizedBox(width: 8),
-              Text('Chokin v${info.latestVersion}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              Text('Chokin v${info.latestVersion}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
             ],
           ),
           content: Column(
@@ -1098,7 +1023,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               ),
               if (info.releaseNotes != null && info.releaseNotes!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                const Text('Novidades:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textPrimary)),
+                const Text('Novidades:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textPrimary)),
                 const SizedBox(height: 6),
                 Container(
                   constraints: const BoxConstraints(maxHeight: 180),
@@ -1156,7 +1082,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             children: [
               Icon(Icons.check_circle, color: AppColors.income, size: 22),
               SizedBox(width: 8),
-              Text('Aplicativo Atualizado', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              Text('Aplicativo Atualizado',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
             ],
           ),
           content: Text(
@@ -1184,7 +1111,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Token GitHub (Repositório Privado)', style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        title: const Text('Token GitHub (Repositório Privado)',
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1222,6 +1150,54 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             child: const Text('Salvar'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SettingsRow extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String? value;
+  final VoidCallback onTap;
+  final bool isLast;
+
+  const _SettingsRow(
+      {required this.title, required this.subtitle, required this.onTap, this.value, this.isLast = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 60),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          border: Border(
+            top: const BorderSide(color: AppColors.border),
+            bottom: isLast ? const BorderSide(color: AppColors.border) : BorderSide.none,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Sumi.body),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: Sumi.caption),
+                ],
+              ),
+            ),
+            if (value != null) ...[
+              const SizedBox(width: 12),
+              Text(value!, style: Sumi.figures(15, color: AppColors.textSecondary)),
+            ],
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
+          ],
+        ),
       ),
     );
   }

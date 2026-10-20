@@ -1,7 +1,9 @@
+import '../../core/utils/money.dart';
+
 enum InvoiceStatus {
-  open,    // Fatura ainda aceitando lançamentos
-  closed,  // Fatura fechada, aguardando pagamento
-  paid,    // Fatura paga
+  open,
+  closed,
+  paid,
 }
 
 class Invoice {
@@ -11,11 +13,11 @@ class Invoice {
   final int year;
   final DateTime closingDate;
   final DateTime dueDate;
-  final DateTime effectiveDueDate; // Considera dias úteis e finais de semana
-  final double totalAmount;
+  final DateTime effectiveDueDate;
+  final int totalAmountCents;
   final InvoiceStatus status;
   final DateTime? paidAt;
-  final double? paidAmount;
+  final int? paidAmountCents;
 
   const Invoice({
     required this.id,
@@ -25,13 +27,16 @@ class Invoice {
     required this.closingDate,
     required this.dueDate,
     required this.effectiveDueDate,
-    this.totalAmount = 0.0,
+    this.totalAmountCents = 0,
     this.status = InvoiceStatus.open,
     this.paidAt,
-    this.paidAmount,
+    this.paidAmountCents,
   });
 
   bool get isPaid => status == InvoiceStatus.paid;
+
+  double get totalAmount => Money.toReais(totalAmountCents);
+  double? get paidAmount => paidAmountCents == null ? null : Money.toReais(paidAmountCents!);
 
   Map<String, dynamic> toMap() {
     return {
@@ -42,10 +47,10 @@ class Invoice {
       'closingDate': closingDate.toIso8601String(),
       'dueDate': dueDate.toIso8601String(),
       'effectiveDueDate': effectiveDueDate.toIso8601String(),
-      'totalAmount': totalAmount,
+      'totalAmountCents': totalAmountCents,
       'status': status.name,
       'paidAt': paidAt?.toIso8601String(),
-      'paidAmount': paidAmount,
+      'paidAmountCents': paidAmountCents,
     };
   }
 
@@ -58,13 +63,13 @@ class Invoice {
       closingDate: DateTime.parse(map['closingDate'] as String),
       dueDate: DateTime.parse(map['dueDate'] as String),
       effectiveDueDate: DateTime.parse(map['effectiveDueDate'] as String),
-      totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0.0,
+      totalAmountCents: map['totalAmountCents'] as int? ?? 0,
       status: InvoiceStatus.values.firstWhere(
         (e) => e.name == map['status'],
         orElse: () => InvoiceStatus.open,
       ),
       paidAt: map['paidAt'] != null ? DateTime.parse(map['paidAt'] as String) : null,
-      paidAmount: (map['paidAmount'] as num?)?.toDouble(),
+      paidAmountCents: map['paidAmountCents'] as int?,
     );
   }
 
@@ -76,10 +81,10 @@ class Invoice {
     DateTime? closingDate,
     DateTime? dueDate,
     DateTime? effectiveDueDate,
-    double? totalAmount,
+    int? totalAmountCents,
     InvoiceStatus? status,
     DateTime? paidAt,
-    double? paidAmount,
+    int? paidAmountCents,
   }) {
     return Invoice(
       id: id ?? this.id,
@@ -89,10 +94,10 @@ class Invoice {
       closingDate: closingDate ?? this.closingDate,
       dueDate: dueDate ?? this.dueDate,
       effectiveDueDate: effectiveDueDate ?? this.effectiveDueDate,
-      totalAmount: totalAmount ?? this.totalAmount,
+      totalAmountCents: totalAmountCents ?? this.totalAmountCents,
       status: status ?? this.status,
       paidAt: paidAt ?? this.paidAt,
-      paidAmount: paidAmount ?? this.paidAmount,
+      paidAmountCents: paidAmountCents ?? this.paidAmountCents,
     );
   }
 }

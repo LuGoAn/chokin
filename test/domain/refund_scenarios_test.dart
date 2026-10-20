@@ -18,9 +18,9 @@ void main() {
         dueDay: 8,
       );
 
-      initialState = FinancialState(
-        availableBalance: 1000.0,
-        reserveBalance: 500.0,
+      initialState = FinancialState.reconciled(
+        availableCents: 100000,
+        reserveCents: 50000,
         transactions: [],
         invoices: [],
         installments: [],
@@ -38,7 +38,7 @@ void main() {
       final tx = FinancialTransaction(
         id: 'tx_fone',
         description: 'Fone de Ouvido Bluetooth',
-        amount: 300.0,
+        amountCents: 30000,
         purchaseDate: DateTime(2026, 8, 10),
         categoryId: 'cat_electronics',
         paymentMethod: PaymentMethod.creditCard,
@@ -53,11 +53,10 @@ void main() {
       expect(state.invoices.first.totalAmount, equals(300.0));
       expect(state.installments.first.amount, equals(300.0));
 
-      // Estorna totalmente no cartão
       state = FinancialMovementEngine.processTransactionRefund(
         currentState: state,
         transactionId: 'tx_fone',
-        refundAmount: 300.0,
+        refundAmountCents: 30000,
         refundMethod: PaymentMethod.creditCard,
         notes: 'Produto devolvido com defeito',
       );
@@ -69,24 +68,23 @@ void main() {
       expect(refundedTx.netAmount, equals(0.0));
       expect(refundedTx.refundNotes, equals('Produto devolvido com defeito'));
 
-      // Fatura e parcela zeradas
       expect(state.invoices.first.totalAmount, equals(0.0));
       expect(state.installments.first.amount, equals(0.0));
 
-      // Movimentação de estorno registrada
-      expect(state.movements.any((m) => m.type == MovementType.refund && m.amount == 300.0), isTrue);
+      expect(state.movements.any((m) => m.type == MovementType.cardRefund && m.amountCents == 30000), isTrue);
+      expect(state.availableBalance, equals(1000.0));
     });
 
     test('Cenário 2: Estorno Parcial no Cartão em compra parcelada abate das parcelas', () {
       final tx = FinancialTransaction(
         id: 'tx_roupas',
         description: 'Roupas Shopping',
-        amount: 300.0,
+        amountCents: 30000,
         purchaseDate: DateTime(2026, 8, 10),
         categoryId: 'cat_clothing',
         paymentMethod: PaymentMethod.creditCard,
         cardId: 'card_nubank',
-        totalInstallments: 3, // 3x de R$ 100
+        totalInstallments: 3,
       );
 
       var state = FinancialMovementEngine.processNewTransaction(
@@ -97,11 +95,10 @@ void main() {
       expect(state.installments.length, equals(3));
       expect(state.installments.every((i) => i.amount == 100.0), isTrue);
 
-      // Estorno parcial de R$ 100 (uma peça devolvida)
       state = FinancialMovementEngine.processTransactionRefund(
         currentState: state,
         transactionId: 'tx_roupas',
-        refundAmount: 100.0,
+        refundAmountCents: 10000,
         refundMethod: PaymentMethod.creditCard,
       );
 
@@ -110,7 +107,6 @@ void main() {
       expect(refundedTx.refundAmount, equals(100.0));
       expect(refundedTx.netAmount, equals(200.0));
 
-      // A última parcela foi zerada e as outras 2 continuam R$ 100
       final insts = state.installments.where((i) => i.transactionId == 'tx_roupas').toList();
       final totalInstallmentsSum = insts.fold<double>(0.0, (acc, i) => acc + i.amount);
       expect(totalInstallmentsSum, equals(200.0));
@@ -120,7 +116,7 @@ void main() {
       final tx = FinancialTransaction(
         id: 'tx_mercado',
         description: 'Supermercado',
-        amount: 150.0,
+        amountCents: 15000,
         purchaseDate: DateTime(2026, 8, 10),
         categoryId: 'cat_market',
         paymentMethod: PaymentMethod.creditCard,
@@ -134,18 +130,15 @@ void main() {
 
       expect(state.availableBalance, equals(1000.0));
 
-      // Estorno recebido via Pix na conta corrente
       state = FinancialMovementEngine.processTransactionRefund(
         currentState: state,
         transactionId: 'tx_mercado',
-        refundAmount: 150.0,
+        refundAmountCents: 15000,
         refundMethod: PaymentMethod.pix,
       );
 
-      // Saldo da conta subiu de 1000 para 1150
       expect(state.availableBalance, equals(1150.0));
 
-      // A fatura permanece com o lançamento para o banco
       expect(state.invoices.first.totalAmount, equals(150.0));
 
       final refundedTx = state.transactions.firstWhere((t) => t.id == 'tx_mercado');
@@ -157,7 +150,7 @@ void main() {
       final tx = FinancialTransaction(
         id: 'tx_mae_remedio',
         description: 'Remédio Farmácia para Mãe',
-        amount: 200.0,
+        amountCents: 20000,
         purchaseDate: DateTime(2026, 8, 10),
         categoryId: 'cat_health',
         paymentMethod: PaymentMethod.creditCard,
@@ -173,15 +166,13 @@ void main() {
       expect(state.reimbursements.first.remainingAmount, equals(200.0));
       expect(state.reimbursements.first.isSettled, isFalse);
 
-      // Farmácia cancelou e estornou a compra
       state = FinancialMovementEngine.processTransactionRefund(
         currentState: state,
         transactionId: 'tx_mae_remedio',
-        refundAmount: 200.0,
+        refundAmountCents: 20000,
         refundMethod: PaymentMethod.creditCard,
       );
 
-      // Dívida da Mãe é automaticamente liquidada
       final reimb = state.reimbursements.firstWhere((r) => r.transactionId == 'tx_mae_remedio');
       expect(reimb.remainingAmount, equals(0.0));
       expect(reimb.isSettled, isTrue);
@@ -191,7 +182,7 @@ void main() {
       final tx = FinancialTransaction(
         id: 'tx_pix_almoço',
         description: 'Almoço Restaurante',
-        amount: 80.0,
+        amountCents: 8000,
         purchaseDate: DateTime(2026, 8, 10),
         categoryId: 'cat_food',
         paymentMethod: PaymentMethod.pix,
@@ -202,18 +193,15 @@ void main() {
         transaction: tx,
       );
 
-      // Saldo caiu de 1000 para 920
       expect(state.availableBalance, equals(920.0));
 
-      // Restaurante cancelou pedido e devolveu Pix
       state = FinancialMovementEngine.processTransactionRefund(
         currentState: state,
         transactionId: 'tx_pix_almoço',
-        refundAmount: 80.0,
+        refundAmountCents: 8000,
         refundMethod: PaymentMethod.pix,
       );
 
-      // Saldo volta para 1000
       expect(state.availableBalance, equals(1000.0));
       final refundedTx = state.transactions.firstWhere((t) => t.id == 'tx_pix_almoço');
       expect(refundedTx.isFullyRefunded, isTrue);
@@ -224,7 +212,7 @@ void main() {
       final tx1 = FinancialTransaction(
         id: 'tx_1',
         description: 'Primeira Compra (05/08)',
-        amount: 50.0,
+        amountCents: 5000,
         purchaseDate: DateTime(2026, 8, 5, 10, 0),
         categoryId: 'cat_other',
         paymentMethod: PaymentMethod.creditCard,
@@ -235,7 +223,7 @@ void main() {
       final tx2 = FinancialTransaction(
         id: 'tx_2',
         description: 'Segunda Compra (10/08 14h)',
-        amount: 70.0,
+        amountCents: 7000,
         purchaseDate: DateTime(2026, 8, 10, 14, 0),
         categoryId: 'cat_other',
         paymentMethod: PaymentMethod.creditCard,
@@ -246,7 +234,7 @@ void main() {
       final tx3 = FinancialTransaction(
         id: 'tx_3',
         description: 'Terceira Compra (10/08 18h - mesma data, adicionada depois)',
-        amount: 90.0,
+        amountCents: 9000,
         purchaseDate: DateTime(2026, 8, 10, 18, 0),
         categoryId: 'cat_other',
         paymentMethod: PaymentMethod.creditCard,
@@ -270,7 +258,6 @@ void main() {
       final inv = state.invoices.first;
       final installments = state.installments.where((i) => i.invoiceId == inv.id).toList();
 
-      // Aplica a mesma ordenação da InvoicesScreen
       installments.sort((a, b) {
         final itemA = state.transactions.firstWhere((t) => t.id == a.transactionId);
         final itemB = state.transactions.firstWhere((t) => t.id == b.transactionId);
@@ -289,7 +276,6 @@ void main() {
         return a.installmentNumber.compareTo(b.installmentNumber);
       });
 
-      // A compra mais recente (tx3) deve ser a primeira (topo), depois tx2, e por último a mais antiga tx1
       expect(installments[0].transactionId, equals('tx_3'));
       expect(installments[1].transactionId, equals('tx_2'));
       expect(installments[2].transactionId, equals('tx_1'));
@@ -299,7 +285,7 @@ void main() {
       final cardTx = FinancialTransaction(
         id: 'tx_tv_1200',
         description: 'Smart TV',
-        amount: 1200.0,
+        amountCents: 120000,
         purchaseDate: DateTime(2026, 8, 10),
         categoryId: 'cat_tech',
         paymentMethod: PaymentMethod.creditCard,
@@ -310,7 +296,7 @@ void main() {
       final pixTx = FinancialTransaction(
         id: 'tx_supermarket_100',
         description: 'Supermercado',
-        amount: 100.0,
+        amountCents: 10000,
         purchaseDate: DateTime(2026, 8, 12),
         categoryId: 'cat_food',
         paymentMethod: PaymentMethod.pix,
@@ -337,8 +323,6 @@ void main() {
         year: 2026,
       );
 
-      // No mês de Agosto, o gasto deve ser 200 (parcela 1/6 da TV) + 100 (Pix) = R$ 300,00
-      // e NÃO R$ 1.300,00!
       expect(summary.periodCreditPurchases, equals(200.0));
       expect(summary.periodPixExpenses, equals(100.0));
       expect(summary.periodPaidExpenses, equals(300.0));
@@ -348,7 +332,7 @@ void main() {
       final txOriginal = FinancialTransaction(
         id: 'tx_edit_installments',
         description: 'Tênis de Corrida',
-        amount: 300.0,
+        amountCents: 30000,
         purchaseDate: DateTime(2026, 8, 15),
         categoryId: 'cat_clothing',
         paymentMethod: PaymentMethod.creditCard,
@@ -364,7 +348,6 @@ void main() {
       expect(state.installments.where((i) => i.transactionId == 'tx_edit_installments').length, equals(1));
       expect(state.installments.first.amount, equals(300.0));
 
-      // Edita para 3 parcelas de R$ 100
       final txEdited = txOriginal.copyWith(totalInstallments: 3);
 
       var intermediateState = FinancialMovementEngine.deleteTransaction(
@@ -394,7 +377,7 @@ void main() {
       final cardTx = FinancialTransaction(
         id: 'tx_course_600',
         description: 'Curso Online',
-        amount: 600.0,
+        amountCents: 60000,
         purchaseDate: DateTime(2026, 8, 10),
         categoryId: 'cat_education',
         paymentMethod: PaymentMethod.creditCard,
@@ -407,7 +390,6 @@ void main() {
         transaction: cardTx,
       );
 
-      // Em Agosto (mês da compra, antes do fechamento dia 20): Parcela 1/3 = R$ 200
       final summaryAug = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 8,
@@ -416,7 +398,6 @@ void main() {
       expect(summaryAug.periodCreditPurchases, equals(200.0));
       expect(summaryAug.periodPaidExpenses, equals(200.0));
 
-      // Em Setembro (mês seguinte): Parcela 2/3 = R$ 200
       final summarySep = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 9,
@@ -425,7 +406,6 @@ void main() {
       expect(summarySep.periodCreditPurchases, equals(200.0));
       expect(summarySep.periodPaidExpenses, equals(200.0));
 
-      // Em Outubro: Parcela 3/3 = R$ 200
       final summaryOct = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 10,
@@ -434,7 +414,6 @@ void main() {
       expect(summaryOct.periodCreditPurchases, equals(200.0));
       expect(summaryOct.periodPaidExpenses, equals(200.0));
 
-      // Em Novembro: Nenhuma parcela restante = R$ 0
       final summaryNov = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 11,
@@ -448,11 +427,11 @@ void main() {
       final cardTx = FinancialTransaction(
         id: 'tx_august_tv',
         description: 'Smart TV',
-        amount: 900.0,
+        amountCents: 90000,
         purchaseDate: DateTime(2026, 8, 15),
         categoryId: 'cat_tech',
         paymentMethod: PaymentMethod.creditCard,
-        cardId: 'card_nubank', // closingDay: 1, dueDay: 8
+        cardId: 'card_nubank',
         totalInstallments: 3,
       );
 
@@ -461,7 +440,6 @@ void main() {
         transaction: cardTx,
       );
 
-      // Em Agosto (mês da compra): Parcela 1/3 = R$ 300
       final summaryAug = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 8,
@@ -470,7 +448,6 @@ void main() {
       expect(summaryAug.periodCreditPurchases, equals(300.0));
       expect(summaryAug.periodPaidExpenses, equals(300.0));
 
-      // Em Setembro (mês seguinte): Parcela 2/3 = R$ 300
       final summarySep = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 9,
@@ -479,7 +456,6 @@ void main() {
       expect(summarySep.periodCreditPurchases, equals(300.0));
       expect(summarySep.periodPaidExpenses, equals(300.0));
 
-      // Em Outubro: Parcela 3/3 = R$ 300
       final summaryOct = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 10,
@@ -488,7 +464,6 @@ void main() {
       expect(summaryOct.periodCreditPurchases, equals(300.0));
       expect(summaryOct.periodPaidExpenses, equals(300.0));
 
-      // Em Novembro: Nenhuma parcela restante = R$ 0
       final summaryNov = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
         month: 11,

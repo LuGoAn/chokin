@@ -43,10 +43,10 @@ class RawNotificationPayload {
 class ParsedTransactionDraft {
   final double? amount;
   final String? merchant;
-  final String? paymentMethod; // 'PIX', 'CREDIT_CARD', etc.
+  final String? paymentMethod;
   final DateTime date;
   final String sourceApp;
-  final bool isPurchase; // true if it's a purchase/expense, false if informational
+  final bool isPurchase;
 
   const ParsedTransactionDraft({
     this.amount,
