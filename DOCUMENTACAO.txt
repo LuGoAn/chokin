@@ -1,0 +1,549 @@
+================================================================================
+                               CHOKIN
+           SISTEMA DE GESTAO FINANCEIRA PESSOAL OFFLINE CONTINUA
+================================================================================
+Documentacao Oficial e Completa do Aplicativo
+Versao: 1.0.2 (Build 3)
+Plataforma: Android (Flutter & Kotlin)
+Repositorio: https://github.com/LuGoAn/chokin
+Autor: Lucas Gomes Andrade (LuGoAn)
+Licenca: Uso Pessoal e Privado (Todos os direitos reservados)
+Data do Documento: Outubro de 2026
+================================================================================
+
+
+--------------------------------------------------------------------------------
+SUMARIO
+--------------------------------------------------------------------------------
+1. INTRODUCAO E FILOSOFIA DO APLICATIVO
+2. ARQUITETURA E SEGURANCA DOS DADOS
+3. O MOTOR CONTABIL (FINANCIAL MOVEMENT ENGINE E LIVRO-RAZAO)
+4. MODULOS E TELAS DO SISTEMA
+   4.1. TELA INICIAL (DASHBOARD)
+   4.2. NOVA TRANSACAO (LANCAMENTO MANUAL PROTEGIDO)
+   4.3. EXTRATO E HISTORICO DE TRANSACOES
+   4.4. GESTAO DE CARTOES DE CREDITO E FATURAS
+   4.5. COBRANCAS E REEMBOLSOS DE TERCEIROS
+   4.6. CAIXA DE ENTRADA (INBOX) E LEITURA DE NOTIFICACOES BANCARIAS
+   4.7. ANALISE FINANCEIRA E GRAFICOS
+   4.8. GERENCIAMENTO DE CATEGORIAS E PESSOAS
+   4.9. BACKUP, EXPORTACAO E RESTAURACAO DE DADOS
+   4.10. SISTEMA DE ATUALIZACOES AUTOMATICAS VIA GITHUB
+5. GUIA ESPECIFICO DE CONFIGURACAO (XIAOMI, POCO, SAMSUNG E ANDROID 14/15)
+6. GUIA PRATICO DE USO NO DIA A DIA
+7. ESPECIFICACOES TECNICAS, BANCO DE DADOS E DEPENDENCIAS
+--------------------------------------------------------------------------------
+
+
+================================================================================
+1. INTRODUCAO E FILOSOFIA DO APLICATIVO
+================================================================================
+
+O Chokin nasceu como uma solucao definitiva para a gestao financeira pessoal
+verdadeiramente privada, continua e estritamente local (offline-first).
+
+Diferente da quase totalidade dos aplicativos financeiros comerciais disponiveis no
+mercado, o Chokin parte dos seguintes principios inegociaveis:
+
+- ZERO NUVEM / ZERO TELEMETRIA: Nenhum dado, valor, extrato, nome de estabelecimento
+  ou saldo e enviado para servidores externos. Todos os dados permanecem confinados
+  no banco de dados SQLite local no aparelho do usuario.
+- INDEPENDENCIA TOTAL DE CONEXAO: O aplicativo funciona 100% de forma offline.
+  A conexao com a internet e utilizada unica e exclusivamente quando o usuario
+  solicita a verificacao de novas versoes no GitHub.
+- CONFIABILIDADE CONTABIL MATEMATICA: O saldo da conta nao e um simples numero
+  editavel sem lastro. Toda e qualquer alteracao de saldo decorre de registros
+  cronologicos no livro-razao (Financial Movements), eliminando divergencias.
+- SEPARACAO ESTRITA DE GASTOS PESSOAIS E GASTOS PARA TERCEIROS: Compras feitas no
+  seu cartao para parentes ou amigos geram controle de cobrancas separado e nao
+  poluem seus graficos de gastos reais do mes.
+- CONTROLE REAL DE RECORRENCIAS E DATAS FUTURAS: Salarios futuros ou contas a
+  pagar agendadas para os proximos dias ou meses sao projetados para visualizacao
+  e planejamento, mas JAMAIS inflam ou afetam o saldo livre em conta presente ate
+  a data exata de sua maturacao.
+
+
+================================================================================
+2. ARQUITETURA E SEGURANCA DOS DADOS
+================================================================================
+
+O sistema e estruturado em camadas bem delimitadas:
+
+1. CAMADA DE APRESENTACAO (Flutter / Material Design 3):
+   - Telas construidas com widgets responsivos e suporte nativo a areas seguras
+     (SafeArea) para dispositivos com barras virtuais de navegacao e telas Edge-to-Edge.
+   - Gerenciamento de estado reativo e centralizado via FinancialStateNotifier e
+     ListenableBuilder, garantindo que alteracoes em faturas, transacoes ou pagamentos
+     reflitam instantaneamente em todas as telas sem travamentos.
+
+2. CAMADA DE DOMINIO (Domain Engine):
+   - Motor Contabil (FinancialMovementEngine): executa os calculos contabeis, entradas,
+     saidas, compensacao por reserva, geracao de parcelas e liquidacoes.
+   - Calculadora de Faturas (InvoiceCalculator): gerencia os ciclos de fechamento e
+     vencimento dos cartoes, faturamento de compras a vista e parceladas.
+   - Motor de Recorrencias (SyncRecurringTransactions): projeta series recorrentes
+     ate 12 meses a frente respeitando cancelamentos e excecoes mensais.
+   - Parsers e Deduplicadores de Notificacoes: processam strings brutas de notificacoes
+     de bancos com filtros anti-spam e deteccao de compras duplicadas por aproximacao.
+
+3. CAMADA DE DADOS E PERSISTENCIA (Data Layer):
+   - SQLite nativo via Sqflite para armazenamento relacional de transacoes, faturas,
+     cartoes, categorias, pessoas e livro-razao.
+   - SharedPreferences para configuracoes de interface, token do GitHub e frequencia
+     de backup automatico.
+   - BackupService: geracao de snapshots completos em formato JSON indentado e
+     restauracao atomica protegida por transacao SQL.
+   - CsvExportService: exportacao tabular delimitada por ponto-e-virgula para Excel.
+
+4. CAMADA NATIVA ANDROID (Kotlin):
+   - ChokinNotificationListenerService: servico nativo registrado no sistema Android
+     para interceptar eventos de notificacao dos bancos configurados.
+   - NativeBufferDatabaseHelper: banco SQLite nativo independente criado para armazenar
+     notificacoes capturadas em segundo plano, mesmo se o processo Flutter estiver
+     fechado ou dormindo. Quando o aplicativo abre, o Flutter descarrega esse buffer.
+   - EventChannel e MethodChannel: comunicacao IPC assincrona e confiavel entre o
+     Kotlin e o motor Dart.
+
+
+================================================================================
+3. O MOTOR CONTABIL (FINANCIAL MOVEMENT ENGINE E LIVRO-RAZAO)
+================================================================================
+
+O nucleo do Chokin e baseado no conceito de livro-razao continuo (Ledger).
+
+3.1. DUAS CONTAS FUNDAMENTAIS:
+- SALDO DISPONIVEL (Conta Corrente / Saldo Livre):
+  Representa o dinheiro liquido imediatamente disponivel para gastos no dia a dia.
+- CAIXINHA (Reserva Financeira / Reserva de Emergencia):
+  Representa o dinheiro guardado/poupado. Fica segregado do saldo disponivel para
+  evitar gastos impulsivos.
+
+3.2. REGRAS DE OURO DA MOVIMENTACAO FINANCEIRA:
+a) RECEITAS:
+   - Se a receita for do dia de hoje ou do passado: incrementa imediatamente o
+     Saldo Disponivel e registra uma movimentacao de entrada.
+   - Se a receita for de data futura (ex: salario agendado para o dia 5 do proximo
+     mes): ela e salva no extrato como agendada, mas NAO altera o saldo disponivel
+     presente ate que a data real chegue.
+b) DESPESAS IMEDIATAS (PIX / DINHEIRO / DEBITO):
+   - Retiram dinheiro imediatamente do Saldo Disponivel se a transacao for de hoje
+     ou do passado.
+   - COMPENSACAO AUTOMATICA PELA CAIXINHA: Se o usuario realizar um gasto superior
+     ao saldo disponivel na conta, o sistema zera o saldo disponivel e retira a
+     diferenca automaticamente da Caixinha (movimento 'reserveCompensation'),
+     garantindo que o saldo bancario real nao fique inconsistente.
+c) DESPESAS NO CARTAO DE CREDITO:
+   - NUNCA retiram dinheiro do saldo em conta no momento da compra.
+   - Geram parcelas (Installments) associadas as faturas corretas do cartao de
+     acordo com a data de fechamento.
+   - O dinheiro so sai do saldo disponivel quando o usuario registrar o pagamento
+     da fatura.
+d) GASTOS PARA TERCEIROS (REEMBOLSOS):
+   - Toda despesa (seja Pix ou Cartao) marcada com uma pessoa devedora cria
+     automaticamente um Reembolso (Reimbursement).
+   - O valor gasto para terceiro NAO entra no somatorio de "Gasto Pessoal do Mes"
+     do Dashboard, evitando que dividas alheias distorcam seu controle de gastos.
+e) MATURACAO AUTOMATICA:
+   - Sempre que o aplicativo e aberto, a funcao realizeMaturedTransactions varre o
+     banco de dados e converte transacoes agendadas cuja data chegou em transacoes
+     efetivadas, debitando ou creditando o saldo no momento exato.
+
+
+================================================================================
+4. MODULOS E TELAS DO SISTEMA
+================================================================================
+
+O Chokin conta com 7 abas principais na barra inferior de navegacao, alem de telas
+auxiliares de gerenciamento e configuracao:
+
+--------------------------------------------------------------------------------
+4.1. TELA INICIAL (DASHBOARD)
+--------------------------------------------------------------------------------
+E a central de comando financeiro do usuario.
+
+Funcionalidades:
+- SELETOR DE PERIODO (MES / ANO):
+  Permite navegar livremente pelo passado, mes presente ou projetar meses futuros.
+  Ao mudar o mes, o dashboard recalcula todo o panorama financeiro para aquele mes.
+- CARDS PRINCIPAIS DE PATRIMONIO:
+  1. Saldo Disponivel: saldo livre em conta no momento presente.
+  2. Caixinha (Reserva): total acumulado guardado.
+  3. Total Gasto no Mes: valor consolidado das despesas pessoais do mes selecionado.
+- BOTAO "GUARDAR SOBRAS NA CAIXINHA":
+  Transfere com 1 clique todo o saldo positivo disponivel para a reserva, limpando o
+  saldo da conta no final do ciclo para comecar o proximo mes organizado.
+- CARROSSEL DE FATURAS DE CARTAO:
+  Exibe cada cartao cadastrado com o valor da fatura do mes selecionado e o selo
+  de status explicito:
+  * FATURA ABERTA (em processamento).
+  * FATURA FECHADA (aguardando pagamento).
+  * FATURA PAGA (com badge verde e data de quitacao).
+  * FATURA FUTURA (projecao de parcelas futuras).
+  Exibe tambem o LIMITE UTILIZADO real de cada cartao.
+- PROXIMAS CONTAS E RECEITAS:
+  Lista as transacoes agendadas e recorrencias previstas para o periodo.
+
+
+--------------------------------------------------------------------------------
+4.2. NOVA TRANSACAO (LANCAMENTO MANUAL PROTEGIDO)
+--------------------------------------------------------------------------------
+Formulario completo e otimizado para cadastro rapido de compras e receitas.
+
+Funcionalidades:
+- BOTAO FIXO COM SAFE AREA:
+  O botao "Confirmar Lancamento" fica fixado em uma barra inferior suspensa
+  (bottomNavigationBar) com protecao nativa de SafeArea. Isso impede que os
+  botoes virtuais de navegacao da Xiaomi (Voltar, Home e Recentes) fiquem em cima
+  do botao.
+- ALTERNADOR DESPESA / RECEITA:
+  Alterna o modo com cores distintivas (Verde para receita, Vermelho para despesa).
+- ENTRADA DE VALOR FORMATADA:
+  Mascara em tempo real de moeda brasileira (R$).
+- DESCRICAO INTELIGENTE:
+  Campo com botao de limpeza rapida e suporte a caracteres especiais.
+- SELETOR DE DATA:
+  Permite lancar gastos retroativos ou programar despesas/receitas futuras.
+- CATEGORIAS DINAMICAS:
+  Filtra automaticamente as categorias conforme o tipo (despesa ou receita), com
+  atalho direto para gerenciar e criar categorias.
+- FORMA DE PAGAMENTO:
+  * Pix (debitado imediatamente da conta).
+  * Cartao de Credito (permite selecionar o cartao e o numero de parcelas).
+  * Dinheiro / Debito (debitado imediatamente).
+- PARCELAMENTO INTELIGENTE (1x a 24x):
+  Calcula automaticamente o valor de cada parcela e distribui pelas faturas
+  seguintes conforme a data de fechamento.
+- RESPONSAVEL PELO GASTO ("QUEM VAI PAGAR?"):
+  * Eu (Gasto Pessoal): o valor compoe o seu custo de vida.
+  * Terceiro (Mãe, Amigo, etc.): gera automaticamente uma cobranca a receber na
+    aba Cobrancas e desvincula o gasto do seu total pessoal.
+- RECORRENCIA AUTOMATICA:
+  Chave para tornar o lancamento recorrente com frequencias:
+  * Diaria
+  * Semanal
+  * Quinzenal (a cada 15 dias)
+  * Mensal
+  * Anual
+- CAMPO DE OBSERVACAO:
+  Anotacoes livres opcionais para busca posterior.
+
+
+--------------------------------------------------------------------------------
+4.3. EXTRATO E HISTORICO DE TRANSACOES
+--------------------------------------------------------------------------------
+Visao completa, cronologica e auditavel de todas as movimentacoes.
+
+Funcionalidades:
+- BUSCA INSTANTANEA:
+  Filtra em tempo real por nome do estabelecimento, descricao ou observacoes.
+- FILTROS AVANCADOS POR CHIPS:
+  Filtre simultaneamente por Tipo (Receita, Despesa, Terceiros), por Categoria e
+  por Forma de Pagamento.
+- DETALHES COMPLETOS DO LANCAMENTO:
+  Exibe data, icone da categoria, forma de pagamento, responsavel, parcela atual
+  (ex: Parcela 2 de 5) e status de estorno.
+- SISTEMA DE ESTORNOS E DEVOLUCOES:
+  * Suporte a estorno TOTAL ou PARCIAL de compras.
+  * Opcao de estorno no proprio cartao (abate do saldo das faturas/ultimas parcelas).
+  * Opcao de estorno via Pix ou Dinheiro (adiciona o dinheiro devolvido ao saldo em conta).
+  * Se a compra estornada era para um terceiro, o sistema abate proporcionalmente
+    a divida que a pessoa tinha com voce.
+- EDICAO COMPLETA:
+  Possibilidade de alterar valor, data, descricao, categoria, forma de pagamento
+  e ate mesmo o parcelamento (ex: converter de 1x para 3x). O Chokin recalcula
+  todas as faturas afetadas atomicamente.
+- EXCLUSAO SEGURA DE RECORRENCIAS:
+  Ao excluir uma transacao recorrente, o app pergunta:
+  * "Excluir apenas esta ocorrencia deste mes."
+  * "Excluir esta e todas as futuras (cancela daqui para frente, preservando o passado)."
+
+
+--------------------------------------------------------------------------------
+4.4. GESTAO DE CARTOES DE CREDITO E FATURAS
+--------------------------------------------------------------------------------
+Controle completo de cartoes sem as pegadinhas dos limites bancarios.
+
+Funcionalidades:
+- CADASTRO DE CARTOES:
+  Nome do cartao, limite total, dia de fechamento, dia de vencimento e cor de destaque.
+- CICLO AUTOMATICO DE FATURA:
+  Compras feitas ate o dia de fechamento entram na fatura atual. Compras a partir
+  do dia de fechamento ("melhor dia de compra") avancam automaticamente para o mes
+  seguinte.
+- LIMITE UTILIZADO PRECISO:
+  Calcula rigorosamente o total de compras a vista e parcelas pendentes reais,
+  excluindo assinaturas futuras projetadas para que o limite disponivel refletido
+  no Chokin seja exatamente o mesmo do aplicativo do seu banco.
+- PAGAMENTO DE FATURAS:
+  Ao tocar em "Confirmar Pagamento", o usuario informa a data do pagamento. O app
+  debita o valor do saldo disponivel da conta corrente (compensando pela caixinha
+  se necessario) e aplica o selo de confirmacao na fatura.
+
+
+--------------------------------------------------------------------------------
+4.5. COBRANCAS E REEMBOLSOS DE TERCEIROS
+--------------------------------------------------------------------------------
+O modulo especializado do Chokin para acabar com a confusao de emprestar cartao
+ou pagar contas para parentes e amigos.
+
+Funcionalidades:
+- RESUMO CONSOLIDADO:
+  * Valor Devido no Mes: soma apenas as parcelas ou compras que vencem no mes
+    selecionado.
+  * Total Acumulado Pendente: divida total considerando parcelas futuras.
+  * Quantidade de devedores ativos no mes.
+- DESDOBRAMENTO INDIVIDUAL:
+  Lista cada pessoa com a foto/icone, o valor que ela deve pagar no mes atual e
+  o historico de compras associadas a ela.
+- QUITACAO DE PARCELA OU TOTAL:
+  * Quitar Parcela do Mes: da baixa na parcela daquele mes quando a pessoa te paga,
+    incrementando seu saldo em conta.
+  * Quitar Total: da baixa em todas as parcelas restantes de uma vez so.
+- CANCELAMENTO / REVERSAO DE QUITACAO:
+  Se voce deu baixa por engano ou o Pix da pessoa nao caiu, basta tocar em desfazer
+  pagamento: o Chokin restaura a divida e estorna o valor da sua conta.
+
+
+--------------------------------------------------------------------------------
+4.6. CAIXA DE ENTRADA (INBOX) E LEITURA DE NOTIFICACOES BANCARIAS
+--------------------------------------------------------------------------------
+Captura automatica passiva de gastos em tempo real direto da barra de status do celular.
+
+Funcionalidades:
+- INTERCEPTACAO CONTINUA EM SEGUNDO PLANO:
+  Servico nativo Android (NotificationListenerService) monitorando ativamente os
+  aplicativos financeiros suportados:
+  * Nubank
+  * Carteira do Google (Google Wallet / Google Pay / GPay)
+  * Samsung Pay / Samsung Wallet
+  * Banco do Brasil
+  * Itau / Itau Personnalite / Iti
+  * Santander / Santander Way
+  * Banco Inter
+  * C6 Bank
+  * Mercado Pago / Mercado Livre
+  * PicPay
+  * Bradesco / Bradesco Cartoes
+  * Caixa / Caixa Tem
+- PARSER INTELIGENTE DE COMPRAS E PIX:
+  Extrai com precisao:
+  * Valor monetario (inclusive formatos com virgula, ponto e inteiros: R$ 38,50 ou R$ 38.50).
+  * Nome do estabelecimento ou favorecido (ex: "em Supermercado Extra", "para Drogaria").
+  * Metodo provavel de pagamento (Credito, Pix, Debito).
+- SUPORTE A NOTIFICACOES EXPANDIDAS (BIGTEXTSTYLE):
+  Lê camadas profundas de texto (EXTRA_BIG_TEXT, EXTRA_TITLE_BIG, EXTRA_TEXT_LINES),
+  garantindo a captura de notificacoes onde o banco omite o valor no resumo curto.
+- FILTRO ANTI-PROMOCOES E ANTI-SPAM:
+  Rejeita automaticamente avisos que nao representam gastos reais:
+  * Ofertas de emprestimo, aumentos de limite, cupons, cashback.
+  * Avisos de fatura fechada, cartao a caminho, informes de IRPF.
+  * Tokens de seguranca e mensagens informativas.
+- DEDUPLICACAO DE CARTEIRAS DIGITAIS:
+  Se uma compra por aproximacao gerar notificacao da Carteira do Google E do Nubank
+  quase no mesmo instante, o motor agrupa as duas em um unico item na Inbox.
+- APROVACAO COM 1 TOQUE:
+  O usuario abre a Inbox, ajusta a categoria desejada se quiser e confirma. A compra
+  vai direto para o extrato oficial.
+- IMPORTACAO DE FATURAS CSV DO NUBANK:
+  Botao para importar extratos em arquivo .csv baixados do Nubank, enviando todas as
+  compras para a Inbox para categorizacao em lote.
+
+
+--------------------------------------------------------------------------------
+4.7. ANALISE FINANCEIRA E GRAFICOS
+--------------------------------------------------------------------------------
+Diagnostico visual da saude financeira no mes selecionado.
+
+Funcionalidades:
+- Card consolidado com total de saidas do mes.
+- Distribuicao por forma de pagamento (Pix vs. Cartao de Credito vs. Dinheiro).
+- Grafico de barras/pizza interativo da distribuicao de gastos por categoria.
+- Ranking ordenado por valor das categorias com percentuais de participacao sobre
+  o orcamento total.
+
+
+--------------------------------------------------------------------------------
+4.8. GERENCIAMENTO DE CATEGORIAS E PESSOAS
+--------------------------------------------------------------------------------
+Personalizacao total da estrutura financeira.
+
+Funcionalidades:
+- CATEGORIAS:
+  * Criar novas categorias de Receita ou Despesa.
+  * Paleta ampla de cores em formato hexadecimal.
+  * Catalogo de dezenas de icones tematicos (alimentacao, transporte, saude, moradia, etc.).
+  * Edicao e exclusao de categorias existentes.
+- PESSOAS:
+  * Cadastro de amigos, familiares e colegas de trabalho.
+  * Identificacao de quem e o proprio usuario ("Eu") e quem sao terceiros.
+
+
+--------------------------------------------------------------------------------
+4.9. BACKUP, EXPORTACAO E RESTAURACAO DE DADOS
+--------------------------------------------------------------------------------
+Garantia de que seu historico financeiro nunca sera perdido.
+
+Funcionalidades:
+- BACKUP COMPLETO EM JSON (100% LOCAL):
+  Exporta a integridade total do banco relacional (transacoes, faturas, movimentos,
+  parcelas, reembolsos, configuracoes) em um unico arquivo estruturado e legivel.
+- RESTAURACAO ATOMICA:
+  Importa o arquivo JSON e remonta todo o estado contabiil do Chokin com seguranca.
+- BACKUP AUTOMATICO PERIODICO:
+  Configuracao de rotina automatica com frequencias:
+  * Diaria
+  * A cada 3 dias
+  * Semanal
+  * Mensal
+  Os backups sao salvos automaticamente na pasta de Documentos do celular com data e hora.
+- EXPORTACAO PARA PLANILHA EXCEL (CSV):
+  Gera arquivo .csv compativel com Microsoft Excel, LibreOffice Calc e Google Sheets.
+  * Delimitador oficial ponto-e-virgula (;).
+  * Valores formatados no padrao monetario brasileiro.
+  * Escopos flexiveis de exportacao:
+    1. Mes selecionado.
+    2. Ano completo.
+    3. Intervalo de datas personalizado (Data inicial e final).
+    4. Historico completo desde o primeiro dia.
+
+
+--------------------------------------------------------------------------------
+4.10. SISTEMA DE ATUALIZACOES AUTOMATICAS VIA GITHUB
+--------------------------------------------------------------------------------
+Como o Chokin nao depende da Google Play Store, ele possui seu proprio mecanismo
+de atualizacao integrado:
+
+Funcionalidades:
+- Conexao direta com a API de Releases do GitHub (repositorio LuGoAn/chokin).
+- Suporte a repositorios privados atraves de Personal Access Token (PAT).
+- Verificacao automatica e silenciosa ao abrir o app e manual na tela de Ajustes.
+- Comparacao inteligente de versao semantica (SemVer).
+- Dialogo nativo que exibe as notas da versao e link direto para baixar o novo chokin.apk.
+
+
+================================================================================
+5. GUIA ESPECIFICO DE CONFIGURACAO (XIAOMI, POCO, SAMSUNG E ANDROID 14/15)
+================================================================================
+
+Para que a leitura automatica de notificacoes funcione 24 horas por dia sem que o
+sistema operacional encerre o servico, configure os seguintes pontos no seu aparelho:
+
+5.1. APARELHOS XIAOMI, POCO E REDMI (HYPEROS / MIUI):
+A Xiaomi possui um gerenciamento de memoria RAM extremamente agressivo. Siga estes
+passos no seu Poco/Xiaomi:
+1. INICIO AUTOMATICO (AUTOSTART):
+   - Va em Configuracoes > Apps > Gerenciar apps > Chokin.
+   - ATIVE a opcao "Inicio automatico" (ou "Permitir inicializacao em segundo plano").
+2. ECONOMIA DE BATERIA:
+   - Na mesma tela do Chokin, toque em "Economia de bateria".
+   - Altere de "Economizador MIUI (recomendado)" para "SEM RESTRICOES".
+3. TRAVAR COM CADEADO NA TELA DE RECENTES (CRUCIAL):
+   - Abra o Chokin e saia dele.
+   - Abra a tela de aplicativos recentes (multitarefa do Android).
+   - Segure o dedo sobre o cartao do Chokin ate aparecer um menu lateral.
+   - Toque no icone de CADEADO. Isso garante que ao tocar no botao "X" para limpar a
+     memoria, a Xiaomi nao encerre o processo do Chokin.
+4. OUTRAS PERMISSOES (POP-UP EM SEGUNDO PLANO):
+   - Em Gerenciar apps > Chokin > Outras permissoes, habilite "Exibir janelas pop-up
+     em segundo plano".
+5. CONFIGURACOES RESTRITAS (SE A PERMISSAO ESTIVER CINZA):
+   - No Android 13/14/15, se o sistema bloquear a permissao de notificacoes por ser
+     um APK instalado manualmente: abra Informacoes do App do Chokin, toque nos
+     3 pontinhos no canto superior direito da tela e selecione "Permitir configuracoes
+     restritas". Em seguida, conceda o acesso a notificacoes normalmente.
+
+5.2. APARELHOS SAMSUNG (ONE UI):
+1. Va em Configuracoes > Aplicativos > Chokin.
+2. Em Bateria, selecione "Nao restrito".
+3. Em Acesso Especial > Acesso a Notificacoes, certifique-se de que o Chokin esta ativado.
+
+5.3. VALIDACAO NO PROPRIO APLICATIVO:
+- Va na aba Ajustes do Chokin:
+  * O indicador de notificacoes deve exibir o badge verde: "ATIVO (CONECTADO)".
+  * Se exibir "AGUARDANDO SO", toque no botao "Reconectar".
+  * Toque no botao "Testar Inbox" para enviar uma compra simulada e comprovar que a
+    Inbox esta recebendo dados perfeitamente.
+
+
+================================================================================
+6. GUIA PRATICO DE USO NO DIA A DIA
+================================================================================
+
+Um roteiro simples e eficiente para extrair o maximo proveito do Chokin:
+
+1. COMPROU POR APROXIMACAO OU FEZ UM PIX:
+   - O celular apita com a notificacao do seu banco ou Carteira do Google.
+   - O servico nativo do Chokin captura o valor e o estabelecimento silenciosamente.
+   - Quando tiver um momento livre, abra o Chokin: havera um contador vermelho na
+     aba Inbox (ex: '2').
+   - Entre na Inbox, confira se a categoria sugerida esta correta e toque no botao
+     de confirmar. O gasto ja entra no extrato e nas faturas do mes.
+
+2. COMPRA MANUAL OU DINHEIRO EM ESPECIE:
+   - Toque no botao flutuante de '+' ou em 'Nova Transacao'.
+   - Digite o valor, descricao e selecione a forma de pagamento.
+   - Toque no botao "Confirmar Lancamento" no rodape seguro da tela.
+
+3. EMPRESTOU O CARTAO OU RACHOU A CONTA COM AMIGOS:
+   - Ao lancar a compra, mude o campo "Quem vai pagar?" de "Eu" para a pessoa.
+   - O valor nao vai sujar seu gasto pessoal do mes.
+   - Na aba "Cobrancas", o Chokin te mostrara quanto a pessoa tem que te transferir
+     neste mes.
+   - Quando ela pagar, toque em "Confirmar Recebimento" e o dinheiro cai no seu saldo.
+
+4. DIA DE PAGAR A FATURA DO CARTAO:
+   - Va na aba Faturas.
+   - Selecione o cartao correspondente e toque em "Confirmar Pagamento".
+   - O Chokin debita o valor exato do seu saldo disponivel e marca a fatura como paga.
+
+5. SOBROU DINHEIRO NO FIM DO MES:
+   - No Dashboard, toque em "Guardar Sobras na Caixinha".
+   - Todo o excedente vai para sua reserva e a conta comeca limpa para o proximo ciclo.
+
+
+================================================================================
+7. ESPECIFICACOES TECNICAS, BANCO DE DADOS E DEPENDENCIAS
+================================================================================
+
+7.1. TABELAS DO BANCO DE DADOS SQLITE (chokin.db):
+- app_settings: chave/valor para configuracoes do sistema.
+- people: cadastro de contatos (id, name, isMe, createdAt).
+- categories: categorias financeiras (id, name, isIncome, colorHex, icon).
+- credit_cards: cartoes cadastrados (id, name, totalLimit, closingDay, dueDay, colorHex).
+- invoices: faturas mensais dos cartoes (id, cardId, month, year, totalAmount, isPaid, paidAt).
+- transactions: registro das transacoes (id, description, amount, purchaseDate, categoryId,
+  paymentMethod, cardId, isRecurring, recurrenceFrequency, personId, refundAmount, etc.).
+- installments: parcelas de compras no cartao (id, transactionId, invoiceId, installmentNumber,
+  totalInstallments, amount, status).
+- reimbursements: cobrancas para terceiros (id, personId, transactionId, totalAmount,
+  remainingAmount, status, createdAt).
+- reimbursement_payments: historico de pagamentos parciais de cobrancas.
+- financial_movements: livro-razao continuo de entradas e saidas (id, transactionId,
+  type, amount, movementDate, description).
+
+7.2. BANCO NATIVO BUFFER (chokin_native_buffer.db):
+- raw_notifications: fila temporaria com id, packageName, appName, title, text,
+  timestamp e flag synced (0 ou 1) para entrega garantida ao Flutter.
+
+7.3. PRINCIPAIS DEPENDENCIAS (pubspec.yaml):
+- flutter_test: suite de testes automatizados unitarios e de integracao.
+- sqflite (^2.4.1): motor SQLite para Android.
+- shared_preferences (2.2.2): persistencia de chaves de configuracao.
+- fl_chart (0.68.0): renderizacao de graficos estatisticos de categorias.
+- intl (^0.19.0): formatacao de datas e internacionalizacao.
+- uuid (^4.5.1): geracao de identificadores unicos universais (UUIDv4).
+- path_provider (2.1.2): acesso seguro aos diretorios de documentos e sandbox privada.
+- file_picker (^13.1.0): selecao de arquivos CSV e JSON para exportacao e importacao.
+
+7.4. COMANDO OFICIAL PARA COMPILACAO (RELEASE):
+Para gerar o executavel oficial pronto para instalacao:
+```bash
+flutter build apk --release --no-tree-shake-icons
+```
+O arquivo resultante e gerado em:
+`build/app/outputs/flutter-apk/app-release.apk`
+(copiado na raiz do projeto como `chokin.apk`).
+
+================================================================================
+                           FIM DA DOCUMENTACAO
+================================================================================
