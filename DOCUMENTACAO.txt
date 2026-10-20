@@ -89,8 +89,9 @@ O sistema e estruturado em camadas bem delimitadas:
 3. CAMADA DE DADOS E PERSISTENCIA (Data Layer):
    - SQLite nativo via Sqflite para armazenamento relacional de transacoes, faturas,
      cartoes, categorias, pessoas e livro-razao.
-   - SharedPreferences para configuracoes de interface, token do GitHub e frequencia
-     de backup automatico.
+   - SharedPreferences para a frequencia e a data do backup automatico.
+   - Tabela app_settings para as demais configuracoes, incluindo o token do GitHub
+     (que fica so no celular: nunca vai no codigo nem nos arquivos de backup).
    - BackupService: geracao de snapshots completos em formato JSON indentado e
      restauracao atomica protegida por transacao SQL.
    - CsvExportService: exportacao tabular delimitada por ponto-e-virgula para Excel.
@@ -153,8 +154,9 @@ e) MATURACAO AUTOMATICA:
 4. MODULOS E TELAS DO SISTEMA
 ================================================================================
 
-O Chokin conta com 7 abas principais na barra inferior de navegacao, alem de telas
-auxiliares de gerenciamento e configuracao:
+A barra inferior tem 5 posicoes: Inicio, Extrato, + (novo lancamento), Cobrancas e
+Mais. Em Mais ficam Faturas e cartoes, Caixa de entrada (com o contador de itens),
+Analise e Ajustes. Pessoas e Categorias sao abertas a partir dos Ajustes:
 
 --------------------------------------------------------------------------------
 4.1. TELA INICIAL (DASHBOARD)
@@ -415,7 +417,9 @@ de atualizacao integrado:
 
 Funcionalidades:
 - Conexao direta com a API de Releases do GitHub (repositorio LuGoAn/chokin).
-- Suporte a repositorios privados atraves de Personal Access Token (PAT).
+- O repositorio e privado: informe um token do GitHub somente de leitura em
+  Ajustes > Token do GitHub. Ele fica guardado apenas no celular. Sem token, a
+  checagem automatica fica em silencio e a manual explica o que fazer.
 - Verificacao automatica e silenciosa ao abrir o app e manual na tela de Ajustes.
 - Comparacao inteligente de versao semantica (SemVer).
 - Dialogo nativo que exibe as notas da versao e link direto para baixar o novo chokin.apk.
@@ -458,11 +462,11 @@ passos no seu Poco/Xiaomi:
 3. Em Acesso Especial > Acesso a Notificacoes, certifique-se de que o Chokin esta ativado.
 
 5.3. VALIDACAO NO PROPRIO APLICATIVO:
-- Va na aba Ajustes do Chokin:
-  * O indicador de notificacoes deve exibir o badge verde: "ATIVO (CONECTADO)".
-  * Se exibir "AGUARDANDO SO", toque no botao "Reconectar".
-  * Toque no botao "Testar Inbox" para enviar uma compra simulada e comprovar que a
-    Inbox esta recebendo dados perfeitamente.
+- Va em Mais > Ajustes > Leitor de notificacoes:
+  * Deve aparecer "Ativo e conectado".
+  * Se aparecer "Aguardando o Android", toque em "Reconectar".
+  * Toque em "Enviar teste" para mandar uma compra simulada e confira em
+    Mais > Caixa de entrada.
 
 
 ================================================================================
@@ -474,13 +478,14 @@ Um roteiro simples e eficiente para extrair o maximo proveito do Chokin:
 1. COMPROU POR APROXIMACAO OU FEZ UM PIX:
    - O celular apita com a notificacao do seu banco ou Carteira do Google.
    - O servico nativo do Chokin captura o valor e o estabelecimento silenciosamente.
-   - Quando tiver um momento livre, abra o Chokin: havera um contador vermelho na
-     aba Inbox (ex: '2').
-   - Entre na Inbox, confira se a categoria sugerida esta correta e toque no botao
-     de confirmar. O gasto ja entra no extrato e nas faturas do mes.
+   - Quando tiver um momento livre, abra o Chokin: havera um contador vermelho em
+     Mais e um aviso na tela Inicio.
+   - Entre em Mais > Caixa de entrada, troque a categoria no chip se quiser e toque
+     em "Confirmar". O gasto ja entra no extrato e nas faturas do mes. Para mudar
+     outros dados, toque em "Editar".
 
 2. COMPRA MANUAL OU DINHEIRO EM ESPECIE:
-   - Toque no botao flutuante de '+' ou em 'Nova Transacao'.
+   - Toque no botao '+' no centro da barra inferior.
    - Digite o valor, descricao e selecione a forma de pagamento.
    - Toque no botao "Confirmar Lancamento" no rodape seguro da tela.
 
@@ -489,15 +494,17 @@ Um roteiro simples e eficiente para extrair o maximo proveito do Chokin:
    - O valor nao vai sujar seu gasto pessoal do mes.
    - Na aba "Cobrancas", o Chokin te mostrara quanto a pessoa tem que te transferir
      neste mes.
-   - Quando ela pagar, toque em "Confirmar Recebimento" e o dinheiro cai no seu saldo.
+   - Quando ela pagar, toque em "Receber o mes" (ou em "Receber parcela ou valor"
+     na compra) e o dinheiro cai no seu saldo.
 
 4. DIA DE PAGAR A FATURA DO CARTAO:
-   - Va na aba Faturas.
-   - Selecione o cartao correspondente e toque em "Confirmar Pagamento".
-   - O Chokin debita o valor exato do seu saldo disponivel e marca a fatura como paga.
+   - Va em Mais > Faturas e cartoes, escolha o cartao e toque em "Pagar fatura".
+   - Escolha "Valor total" ou "Outro valor" (pagamento parcial) e a data real.
+   - O Chokin debita do saldo disponivel (completando pela Caixinha, se faltar) e
+     a fatura ganha o carimbo 済 PAGA.
 
 5. SOBROU DINHEIRO NO FIM DO MES:
-   - No Dashboard, toque em "Guardar Sobras na Caixinha".
+   - Na tela Inicio, toque em "Guardar R$ ... na Caixinha".
    - Todo o excedente vai para sua reserva e a conta comeca limpa para o proximo ciclo.
 
 
@@ -505,21 +512,33 @@ Um roteiro simples e eficiente para extrair o maximo proveito do Chokin:
 7. ESPECIFICACOES TECNICAS, BANCO DE DADOS E DEPENDENCIAS
 ================================================================================
 
-7.1. TABELAS DO BANCO DE DADOS SQLITE (chokin.db):
+7.1. TABELAS DO BANCO DE DADOS SQLITE (chokin_database.db, versao 6):
+Todo valor monetario e guardado em CENTAVOS (INTEGER), nas colunas terminadas em
+"Cents". Ex: R$ 38,50 = 3850. Nao ha saldo guardado a parte: o saldo disponivel e a
+Caixinha sao sempre a soma das movimentacoes do livro-razao (financial_movements).
 - app_settings: chave/valor para configuracoes do sistema.
-- people: cadastro de contatos (id, name, isMe, createdAt).
-- categories: categorias financeiras (id, name, isIncome, colorHex, icon).
-- credit_cards: cartoes cadastrados (id, name, totalLimit, closingDay, dueDay, colorHex).
-- invoices: faturas mensais dos cartoes (id, cardId, month, year, totalAmount, isPaid, paidAt).
-- transactions: registro das transacoes (id, description, amount, purchaseDate, categoryId,
-  paymentMethod, cardId, isRecurring, recurrenceFrequency, personId, refundAmount, etc.).
+- people: cadastro de contatos (id, name, phone, createdAt).
+- categories: categorias financeiras (id, name, icon, colorHex, type, isCustom, displayOrder).
+- credit_cards: cartoes cadastrados (id, name, creditLimitCents, closingDay, dueDay, colorHex).
+- invoices: faturas mensais dos cartoes (id, cardId, month, year, totalAmountCents, status,
+  paidAt, paidAmountCents).
+- transactions: registro das transacoes (id, description, amountCents, purchaseDate, categoryId,
+  paymentMethod, cardId, isRecurring, recurrence, personId, refundAmountCents, etc.).
 - installments: parcelas de compras no cartao (id, transactionId, invoiceId, installmentNumber,
-  totalInstallments, amount, status).
-- reimbursements: cobrancas para terceiros (id, personId, transactionId, totalAmount,
-  remainingAmount, status, createdAt).
-- reimbursement_payments: historico de pagamentos parciais de cobrancas.
+  totalInstallments, amountCents).
+- reimbursements: cobrancas para terceiros (id, personId, transactionId, totalAmountCents,
+  remainingAmountCents, status, createdAt).
+- reimbursement_payments: historico de pagamentos parciais de cobrancas (amountCents).
 - financial_movements: livro-razao continuo de entradas e saidas (id, transactionId,
-  type, amount, movementDate, description).
+  type, amountCents, movementDate, description). O saldo inicial e os ajustes de saldo
+  tambem sao movimentacoes (tipos manualAdjustment e reserveAdjustment).
+- inbox_notifications: notificacoes aguardando revisao (parsedAmount ainda em reais, pois e
+  apenas um rascunho lido do texto do banco).
+
+Migracao da versao 5: na primeira abertura apos a atualizacao, o app salva uma copia
+completa dos dados antigos em ChokinBackups/chokin_backup_antes_da_v6_<data>.json,
+converte os valores para centavos e registra o saldo que aparecia antes como
+"Saldo inicial". Backups antigos (formato 1) continuam podendo ser restaurados.
 
 7.2. BANCO NATIVO BUFFER (chokin_native_buffer.db):
 - raw_notifications: fila temporaria com id, packageName, appName, title, text,
@@ -535,7 +554,20 @@ Um roteiro simples e eficiente para extrair o maximo proveito do Chokin:
 - path_provider (2.1.2): acesso seguro aos diretorios de documentos e sandbox privada.
 - file_picker (^13.1.0): selecao de arquivos CSV e JSON para exportacao e importacao.
 
-7.4. COMANDO OFICIAL PARA COMPILACAO (RELEASE):
+7.4. IDENTIDADE VISUAL (SUMI):
+- Inspirada no kakeibo, o caderno japones de financas da casa. Fundo de nanquim
+  (#15130F), texto cor de papel (#EDE6D8) e uma unica cor forte, o vermelho de
+  carimbo (#E2553A), usada so nas acoes principais e em alertas.
+- Linhas finas no lugar de sombras e degrades; cantos de 6 px.
+- Fontes: Shippori Mincho para valores e Zen Kaku Gothic New para a interface,
+  embutidas em assets/fonts ja cortadas para latim + os kanji usados (licenca OFL).
+- Tokens em lib/core/theme (AppColors, Sumi, AppTheme) e componentes em
+  lib/presentation/widgets/sumi_widgets.dart (faixa de meses, linhas de
+  livro-razao, chips, seletores, carimbo 済).
+- Imagens de referencia das telas em test/goldens. Para gera-las de novo:
+  flutter test test/goldens --update-goldens
+
+7.5. COMANDO OFICIAL PARA COMPILACAO (RELEASE):
 Para gerar o executavel oficial pronto para instalacao:
 ```bash
 flutter build apk --release --no-tree-shake-icons

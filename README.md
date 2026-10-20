@@ -80,6 +80,9 @@ O aplicativo resolve problemas comuns de planejamento orcamentario, tais como o 
 - Banco de Dados: SQLite local protegido em sandbox privada do Android.
 - Privacade: Zero telemetria, zero rastreadores e zero envio de informacoes para a internet.
 - Integridade Contabil: Todas as alteracoes de saldo passam pelo motor de livro-razao (FinancialMovementEngine), garantindo consistencia matematica e auditabilidade completa do historico.
+- Dinheiro em centavos: todos os valores sao inteiros em centavos, sem erro de arredondamento; o saldo disponivel e a Caixinha sao sempre a soma das movimentacoes.
+- Atualizacoes: o repositorio e privado, entao a verificacao de versoes usa um token do GitHub informado em Ajustes, guardado apenas no celular (nunca no codigo nem nos backups).
+- Interface: visual Sumi, inspirado no kakeibo (caderno japones de financas), com fundo de nanquim, texto cor de papel e uma unica cor de destaque. Imagens de referencia das telas em `test/goldens`.
 
 ---
 

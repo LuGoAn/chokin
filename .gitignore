@@ -39,6 +39,8 @@ chokin.apk
 **/android/gradlew.bat
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
+**/android/build/
+**/android/app/build/
 
 # Symbol processing
 .symbols/
