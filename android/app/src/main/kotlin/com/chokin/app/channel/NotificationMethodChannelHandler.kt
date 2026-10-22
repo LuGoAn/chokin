@@ -3,6 +3,7 @@ package com.chokin.app.channel
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
@@ -18,12 +19,32 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
 
     companion object {
         fun forceRebind(context: Context) {
+            if (ChokinNotificationListenerService.isConnected) return
             try {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                     val cn = ComponentName(context, ChokinNotificationListenerService::class.java)
                     android.service.notification.NotificationListenerService.requestRebind(cn)
                 }
             } catch (_: Exception) {}
+        }
+
+        fun restartListener(context: Context) {
+            if (ChokinNotificationListenerService.isConnected) return
+            try {
+                val cn = ComponentName(context, ChokinNotificationListenerService::class.java)
+                val pm = context.packageManager
+                pm.setComponentEnabledSetting(
+                    cn,
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP
+                )
+                pm.setComponentEnabledSetting(
+                    cn,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    PackageManager.DONT_KILL_APP
+                )
+            } catch (_: Exception) {}
+            forceRebind(context)
         }
     }
 
@@ -59,7 +80,7 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
             "rebindService" -> {
                 try {
                     if (isNotificationServiceEnabled()) {
-                        forceRebind(context)
+                        restartListener(context)
                     }
                     result.success(true)
                 } catch (e: Exception) {

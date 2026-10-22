@@ -152,7 +152,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                     child: OutlinedButton(
                       onPressed: () async {
                         await widget.notifier.notificationBridge.rebindService();
-                        await _checkPermission();
+                        for (var i = 0; i < 10 && !_serviceConnected; i++) {
+                          await Future.delayed(const Duration(milliseconds: 500));
+                          await _checkPermission();
+                        }
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -279,7 +282,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 Icons.hourglass_empty,
                 AppColors.warning,
                 'Aguardando o Android',
-                'A permissão foi dada, mas o sistema ainda não ligou o leitor. Tente Reconectar.',
+                'A permissão foi dada, mas o sistema ainda não ligou o leitor. Toque em Reconectar; '
+                    'se continuar assim, desligue e ligue o Chokin em Acesso a notificações.',
               ));
 
     return Row(
