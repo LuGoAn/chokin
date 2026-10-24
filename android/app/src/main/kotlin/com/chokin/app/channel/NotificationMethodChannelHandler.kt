@@ -10,12 +10,14 @@ import androidx.core.app.NotificationManagerCompat
 import com.chokin.app.notifications.ChokinNotificationListenerService
 import com.chokin.app.notifications.MonitoredPackagesManager
 import com.chokin.app.notifications.NativeBufferDatabaseHelper
+import com.chokin.app.notifications.NotificationLog
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 class NotificationMethodChannelHandler(private val context: Context) : MethodChannel.MethodCallHandler {
     private val dbHelper = NativeBufferDatabaseHelper(context)
     private val monitoredManager = MonitoredPackagesManager(context)
+    private val notificationLog = NotificationLog(context)
 
     companion object {
         fun forceRebind(context: Context) {
@@ -73,6 +75,18 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
                     forceRebind(context)
                 }
                 result.success(isGranted)
+            }
+            "getDiagnostics" -> {
+                result.success(
+                    notificationLog.snapshot() + mapOf(
+                        "connected" to ChokinNotificationListenerService.isConnected,
+                        "permissionGranted" to isNotificationServiceEnabled()
+                    )
+                )
+            }
+            "clearDiagnostics" -> {
+                notificationLog.clear()
+                result.success(true)
             }
             "isServiceConnected" -> {
                 result.success(ChokinNotificationListenerService.isConnected)

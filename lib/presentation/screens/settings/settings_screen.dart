@@ -12,6 +12,7 @@ import '../../../data/export/csv_export_service.dart';
 import '../../widgets/sumi_widgets.dart';
 import '../categories/categories_management_screen.dart';
 import '../people/people_management_screen.dart';
+import 'reader_diagnostics_screen.dart';
 import '../../../domain/engine/financial_movement_engine.dart';
 import '../../../services/update_service.dart';
 import '../../state/financial_state_notifier.dart';
@@ -186,6 +187,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                     ),
                   ),
                 ],
+              ),
+              _SettingsRow(
+                title: 'Diagnóstico do leitor',
+                subtitle: 'Mostra o que o Android entregou e por que cada notificação foi aceita ou descartada',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => ReaderDiagnosticsScreen(notifier: widget.notifier)),
+                ),
               ),
               _SettingsRow(
                 title: 'Xiaomi, Poco e Redmi (HyperOS)',

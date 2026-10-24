@@ -86,6 +86,33 @@ class NotificationBridgeService {
     );
   }
 
+  String describeOutcome(RawNotificationPayload payload) {
+    final fullText = '${payload.rawTitle} ${payload.rawText}'.trim();
+    final lower = fullText.toLowerCase();
+    for (final kw in NotificationParser.promoKeywords) {
+      if (lower.contains(kw)) return 'descartada: contém "$kw", tratada como promoção';
+    }
+    final item = processRawNotification(payload);
+    if (item == null) return 'descartada: nenhum leitor encontrou um valor em reais';
+    final merchant = item.parsedMerchant ?? 'sem estabelecimento';
+    return 'vira lançamento: R\$ ${item.parsedAmount?.toStringAsFixed(2)} · $merchant';
+  }
+
+  Future<Map<String, dynamic>> getDiagnostics() async {
+    try {
+      final raw = await _methodChannel.invokeMapMethod<String, dynamic>('getDiagnostics');
+      return raw ?? {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> clearDiagnostics() async {
+    try {
+      await _methodChannel.invokeMethod('clearDiagnostics');
+    } catch (_) {}
+  }
+
   Future<List<InboxNotification>> fetchPendingNotificationsFromNative() async {
     try {
       final List<dynamic>? rawList = await _methodChannel.invokeListMethod('getPendingNotifications');

@@ -11,6 +11,7 @@ class ChokinNotificationListenerService : NotificationListenerService() {
 
     private lateinit var dbHelper: NativeBufferDatabaseHelper
     private lateinit var monitoredManager: MonitoredPackagesManager
+    private lateinit var log: NotificationLog
 
     companion object {
         @Volatile
@@ -21,6 +22,7 @@ class ChokinNotificationListenerService : NotificationListenerService() {
         super.onCreate()
         dbHelper = NativeBufferDatabaseHelper(applicationContext)
         monitoredManager = MonitoredPackagesManager(applicationContext)
+        log = NotificationLog(applicationContext)
     }
 
     override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
@@ -31,6 +33,7 @@ class ChokinNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         isConnected = true
+        log.markConnected(System.currentTimeMillis())
     }
 
     override fun onListenerDisconnected() {
@@ -48,6 +51,7 @@ class ChokinNotificationListenerService : NotificationListenerService() {
         if (sbn == null) return
 
         val packageName = sbn.packageName ?: return
+        log.countReceived(sbn.postTime)
         if (!monitoredManager.isPackageMonitored(packageName)) {
             return
         }
@@ -73,42 +77,49 @@ class ChokinNotificationListenerService : NotificationListenerService() {
         )
 
         val text = textCandidates.joinToString(" ").trim()
+        val timestamp = sbn.postTime
 
         if (title.isBlank() && text.isBlank()) {
+            log.add(timestamp, packageName, title, text, "sem título e sem texto: o sistema não entregou o conteúdo")
             return
         }
 
         if (!isFinancialTransaction(title, text, packageName)) {
+            log.add(timestamp, packageName, title, text, "descartada pelo filtro do leitor")
             return
         }
 
-        val id = UUID.randomUUID().toString()
-        val appName = getApplicationName(packageName)
-        val timestamp = sbn.postTime
+        try {
+            val id = UUID.randomUUID().toString()
+            val appName = getApplicationName(packageName)
 
-        val payload = mapOf(
-            "id" to id,
-            "packageName" to packageName,
-            "appName" to appName,
-            "rawTitle" to title,
-            "rawText" to text,
-            "timestamp" to timestamp
-        )
+            val payload = mapOf(
+                "id" to id,
+                "packageName" to packageName,
+                "appName" to appName,
+                "rawTitle" to title,
+                "rawText" to text,
+                "timestamp" to timestamp
+            )
 
-        val isFlutterListening = NotificationEventChannelHandler.isListening()
+            val isFlutterListening = NotificationEventChannelHandler.isListening()
 
-        dbHelper.insertNotification(
-            id = id,
-            packageName = packageName,
-            appName = appName,
-            title = title,
-            text = text,
-            timestamp = timestamp,
-            synced = false
-        )
+            dbHelper.insertNotification(
+                id = id,
+                packageName = packageName,
+                appName = appName,
+                title = title,
+                text = text,
+                timestamp = timestamp,
+                synced = false
+            )
 
-        if (isFlutterListening) {
-            NotificationEventChannelHandler.sendNotification(payload)
+            if (isFlutterListening) {
+                NotificationEventChannelHandler.sendNotification(payload)
+            }
+            log.add(timestamp, packageName, title, text, "aceita e enviada ao app")
+        } catch (e: Exception) {
+            log.add(timestamp, packageName, title, text, "erro ao salvar: ${e.message}")
         }
     }
 
