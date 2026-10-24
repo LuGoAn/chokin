@@ -21,7 +21,7 @@ void main() {
     test('Default configuration points to LuGoAn/chokin', () {
       expect(UpdateService.repoOwner, equals('LuGoAn'));
       expect(UpdateService.repoName, equals('chokin'));
-      expect(UpdateService.currentVersion, equals('1.1.2'));
+      expect(UpdateService.currentVersion, equals('1.1.3'));
     });
 
     test('AppUpdateInfo factory constructors work as expected', () {

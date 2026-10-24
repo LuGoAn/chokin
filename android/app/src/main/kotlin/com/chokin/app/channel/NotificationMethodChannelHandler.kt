@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import com.chokin.app.notifications.ChokinNotificationListenerService
+import com.chokin.app.notifications.KeepAliveService
 import com.chokin.app.notifications.MonitoredPackagesManager
 import com.chokin.app.notifications.NativeBufferDatabaseHelper
 import com.chokin.app.notifications.NotificationLog
@@ -75,6 +76,14 @@ class NotificationMethodChannelHandler(private val context: Context) : MethodCha
                     forceRebind(context)
                 }
                 result.success(isGranted)
+            }
+            "isKeepAliveEnabled" -> {
+                result.success(KeepAliveService.isEnabled(context))
+            }
+            "setKeepAlive" -> {
+                val enabled = call.argument<Boolean>("enabled") ?: false
+                KeepAliveService.setEnabled(context, enabled)
+                result.success(enabled)
             }
             "getDiagnostics" -> {
                 result.success(

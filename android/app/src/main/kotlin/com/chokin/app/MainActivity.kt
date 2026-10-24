@@ -2,6 +2,7 @@ package com.chokin.app
 
 import com.chokin.app.channel.NotificationEventChannelHandler
 import com.chokin.app.channel.NotificationMethodChannelHandler
+import com.chokin.app.notifications.KeepAliveService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -26,5 +27,6 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         NotificationMethodChannelHandler.forceRebind(applicationContext)
+        KeepAliveService.start(applicationContext)
     }
 }

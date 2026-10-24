@@ -29,6 +29,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
   bool _notificationAccessGranted = false;
   bool _serviceConnected = false;
+  bool _keepAlive = false;
   AutoBackupFrequency _autoBackupFreq = AutoBackupFrequency.disabled;
   DateTime? _lastAutoBackupDate;
   String? _backupDirPath;
@@ -89,10 +90,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   Future<void> _checkPermission() async {
     final granted = await widget.notifier.notificationBridge.checkPermission();
     final connected = await widget.notifier.notificationBridge.isServiceConnected();
+    final keepAlive = await widget.notifier.notificationBridge.isKeepAliveEnabled();
     if (mounted) {
       setState(() {
         _notificationAccessGranted = granted;
         _serviceConnected = connected;
+        _keepAlive = keepAlive;
       });
     }
   }
@@ -189,6 +192,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 ],
               ),
               _SettingsRow(
+                title: 'Manter o leitor sempre ativo',
+                subtitle: 'Deixa uma notificação silenciosa fixa para o sistema não encerrar o leitor',
+                trailing: Switch(value: _keepAlive, onChanged: _setKeepAlive),
+                onTap: () => _setKeepAlive(!_keepAlive),
+              ),
+              _SettingsRow(
                 title: 'Diagnóstico do leitor',
                 subtitle: 'Mostra o que o Android entregou e por que cada notificação foi aceita ou descartada',
                 onTap: () => Navigator.of(context).push(
@@ -263,6 +272,11 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         );
       },
     );
+  }
+
+  Future<void> _setKeepAlive(bool value) async {
+    setState(() => _keepAlive = value);
+    await widget.notifier.notificationBridge.setKeepAlive(value);
   }
 
   Future<void> _openPermissionSettings() async {
@@ -1171,11 +1185,17 @@ class _SettingsRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final String? value;
+  final Widget? trailing;
   final VoidCallback onTap;
   final bool isLast;
 
   const _SettingsRow(
-      {required this.title, required this.subtitle, required this.onTap, this.value, this.isLast = false});
+      {required this.title,
+      required this.subtitle,
+      required this.onTap,
+      this.value,
+      this.trailing,
+      this.isLast = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1207,7 +1227,7 @@ class _SettingsRow extends StatelessWidget {
               Text(value!, style: Sumi.figures(15, color: AppColors.textSecondary)),
             ],
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
+            trailing ?? const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
           ],
         ),
       ),

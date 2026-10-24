@@ -34,6 +34,7 @@ class ChokinNotificationListenerService : NotificationListenerService() {
         super.onListenerConnected()
         isConnected = true
         log.markConnected(System.currentTimeMillis())
+        KeepAliveService.start(applicationContext)
     }
 
     override fun onListenerDisconnected() {

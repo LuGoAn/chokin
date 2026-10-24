@@ -107,6 +107,20 @@ class NotificationBridgeService {
     }
   }
 
+  Future<bool> isKeepAliveEnabled() async {
+    try {
+      return await _methodChannel.invokeMethod<bool>('isKeepAliveEnabled') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> setKeepAlive(bool enabled) async {
+    try {
+      await _methodChannel.invokeMethod('setKeepAlive', {'enabled': enabled});
+    } catch (_) {}
+  }
+
   Future<void> clearDiagnostics() async {
     try {
       await _methodChannel.invokeMethod('clearDiagnostics');
