@@ -10,8 +10,6 @@ class MonitoredPackagesManager(context: Context) {
         private const val KEY_PACKAGES = "monitored_packages"
         val DEFAULT_PACKAGES = setOf(
             "com.nu.production",
-            "com.google.android.apps.walletnfcrel",
-            "com.google.android.gms",
             "com.samsung.android.spay",
             "com.samsung.android.raja.spay",
             "br.com.bb.android",
@@ -48,6 +46,7 @@ class MonitoredPackagesManager(context: Context) {
     fun isPackageMonitored(packageName: String): Boolean {
         val monitored = getMonitoredPackages()
         val pkg = packageName.lowercase()
+        if (pkg.contains("walletnfcrel") || pkg.startsWith("com.google.android.gms")) return false
         return monitored.contains(packageName) ||
                monitored.any { pkg.startsWith(it.lowercase()) } ||
                pkg.contains("nubank") ||
@@ -59,9 +58,6 @@ class MonitoredPackagesManager(context: Context) {
                pkg.contains("santander") ||
                pkg.contains("itau") ||
                pkg.contains("bradesco") ||
-               pkg.contains("wallet") ||
-               pkg.contains("google.android.gms") ||
-               pkg.contains("walletnfcrel") ||
                pkg == "android" ||
                pkg.contains("shell") ||
                pkg.contains("notification") ||

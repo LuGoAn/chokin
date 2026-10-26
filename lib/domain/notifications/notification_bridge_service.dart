@@ -4,7 +4,6 @@ import 'package:uuid/uuid.dart';
 import '../entities/inbox_notification.dart';
 import 'notification_payload.dart';
 import 'parsers/generic_bank_parser.dart';
-import 'parsers/google_wallet_parser.dart';
 import 'parsers/notification_parser.dart';
 import 'parsers/nubank_parser.dart';
 import 'parsers/samsung_pay_parser.dart';
@@ -16,7 +15,6 @@ class NotificationBridgeService {
 
   final List<NotificationParser> _parsers = [
     NubankParser(),
-    GoogleWalletParser(),
     SamsungPayParser(),
     GenericBankParser(),
   ];
@@ -54,7 +52,7 @@ class NotificationBridgeService {
   InboxNotification? processRawNotification(RawNotificationPayload payload) {
     final fullText = '${payload.rawTitle} ${payload.rawText}'.trim();
 
-    if (NotificationParser.isPromotionalOrSpam(fullText)) {
+    if (NotificationParser.isPromotionalOrSpam(fullText) || !NotificationParser.hasTransactionKeyword(fullText)) {
       return null;
     }
 
@@ -88,9 +86,10 @@ class NotificationBridgeService {
 
   String describeOutcome(RawNotificationPayload payload) {
     final fullText = '${payload.rawTitle} ${payload.rawText}'.trim();
-    final lower = fullText.toLowerCase();
-    for (final kw in NotificationParser.promoKeywords) {
-      if (lower.contains(kw)) return 'descartada: contém "$kw", tratada como promoção';
+    final promo = NotificationParser.matchedPromoKeyword(fullText);
+    if (promo != null) return 'descartada: contém "$promo", tratada como promoção';
+    if (!NotificationParser.hasTransactionKeyword(fullText)) {
+      return 'descartada: não parece compra, pagamento nem Pix';
     }
     final item = processRawNotification(payload);
     if (item == null) return 'descartada: nenhum leitor encontrou um valor em reais';
@@ -173,10 +172,10 @@ class NotificationBridgeService {
   }
 
   Future<InboxNotification?> simulateTestNotification({
-    String appName = 'Carteira do Google',
-    String packageName = 'com.google.android.apps.walletnfcrel',
-    String rawTitle = 'Carteira do Google',
-    String rawText = 'R\$ 25,50 em Supermercado Teste',
+    String appName = 'Nubank',
+    String packageName = 'com.nu.production',
+    String rawTitle = 'Compra no crédito aprovada',
+    String rawText = 'Compra de R\$ 25,50 APROVADA em Supermercado Teste para o cartão com final 1234.',
   }) async {
     final payload = RawNotificationPayload(
       id: _uuid.v4(),

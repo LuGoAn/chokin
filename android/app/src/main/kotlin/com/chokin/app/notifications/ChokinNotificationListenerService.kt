@@ -16,6 +16,34 @@ class ChokinNotificationListenerService : NotificationListenerService() {
     companion object {
         @Volatile
         var isConnected: Boolean = false
+
+        private val PROMO_KEYWORDS = listOf(
+            "empréstimo", "emprestimo", "limite aumentou", "aumento de limite", "novo limite",
+            "ajuste seu limite", "aumentar seu limite", "cupom", "desconto", "cashback", "ganhe",
+            "convide", "indique", "informe de rendimentos", "declaração", "declaracao", "irpf",
+            "código de segurança", "codigo de seguranca", "código de acesso", "token", "código:",
+            "codigo:", "fatura fechou", "fatura disponível", "fatura disponivel", "fatura fechada",
+            "fatura vence", "cartão chegou", "cartao chegou", "cartão a caminho", "cartao a caminho",
+            "senha", "promoção", "promocao", "ofertas", "oferta", "investimento", "cdb", "cripto",
+            "rendimento", "atualize seu app", "novidade", "pontos", "milhas", "seguro de vida",
+            "portabilidade", "guardar dinheiro", "resgate seu", "aproveite", "parabéns", "parabens",
+            "sorteio", "venda de qualquer lugar", "maquininha", "receba em", "de graça", "de graca",
+            "grátis", "gratis", "taxa", "taxas", "a partir de", "por apenas", "apenas r$", "só r$",
+            "pré-aprovado", "pré-aprovada", "pre-aprovado", "pre-aprovada", "próxima compra",
+            "proxima compra", "simule", "simular", "contrate", "contratar", "libere", "conheça",
+            "conheca", "experimente", "saiba mais", "baixe", "ative", "ativar", "abra sua conta",
+            "peça", "peca", "tap", "campanha", "vantagens", "benefício", "beneficio", "anuidade"
+        )
+
+        private val TRANSACTION_KEYWORDS = listOf(
+            "compra", "pagou", "pagamento", "pix enviado", "pix recebido", "pix de",
+            "transferência enviada", "transferência recebida", "transferencia enviada",
+            "transferencia recebida", "transferiu", "enviou um pix", "enviou", "recebeu um pix",
+            "recebeu", "você pagou", "voce pagou", "você recebeu", "voce recebeu", "aprovada",
+            "aprovado", "autorizada", "autorizado", "confirmada", "confirmado", "transação",
+            "transacao", "saque", "boleto pago", "recarga realizada", "aproximação", "aproximacao",
+            "contactless", "gasto", "gastou", "débito automático", "debito automatico"
+        )
     }
 
     override fun onCreate() {
@@ -85,7 +113,7 @@ class ChokinNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        if (!isFinancialTransaction(title, text, packageName)) {
+        if (!isFinancialTransaction(title, text)) {
             log.add(timestamp, packageName, title, text, "descartada pelo filtro do leitor")
             return
         }
@@ -124,53 +152,17 @@ class ChokinNotificationListenerService : NotificationListenerService() {
         }
     }
 
-    private fun isFinancialTransaction(title: String?, text: String?, packageName: String): Boolean {
+    private fun isFinancialTransaction(title: String?, text: String?): Boolean {
         val full = ((title ?: "") + " " + (text ?: "")).lowercase()
-
-        val promoKeywords = listOf(
-            "empréstimo", "emprestimo", "limite aumentou", "aumento de limite", "novo limite",
-            "ajuste seu limite", "aumentar seu limite", "cupom", "desconto", "cashback", "ganhe",
-            "convide", "indique", "informe de rendimentos", "declaração", "declaracao", "irpf",
-            "código de segurança", "codigo de seguranca", "código de acesso", "token", "código:",
-            "codigo:", "fatura fechou", "fatura disponível", "fatura disponivel", "fatura fechada",
-            "fatura vence", "cartão chegou", "cartao chegou", "cartão a caminho", "cartao a caminho",
-            "senha", "promoção", "promocao", "ofertas", "oferta", "investimento", "cdb", "cripto",
-            "rendimento", "atualize seu app", "novidade", "pontos", "milhas", "seguro de vida",
-            "portabilidade", "guardar dinheiro", "resgate seu", "aproveite", "parabéns", "parabens",
-            "sorteio"
-        )
-
-        for (kw in promoKeywords) {
-            if (full.contains(kw)) {
-                return false
-            }
-        }
 
         val hasAmount = full.contains("r$") || full.contains("brl") || Regex("""\d+([.,]\d{2})""").containsMatchIn(full)
         if (!hasAmount) return false
 
-        val isDigitalWallet = packageName.contains("wallet") ||
-                packageName.contains("walletnfcrel") ||
-                packageName.contains("google.android.gms") ||
-                full.contains("carteira") ||
-                full.contains("wallet") ||
-                full.contains("google pay") ||
-                full.contains("gpay")
-        if (isDigitalWallet) return true
+        return !containsAny(full, PROMO_KEYWORDS) && containsAny(full, TRANSACTION_KEYWORDS)
+    }
 
-        val transactionKeywords = listOf(
-            "compra", "pagou", "pago", "pagamento", "pagar", "pix", "transferência", "transferencia",
-            "transferiu", "enviou", "enviado", "enviada", "recebeu", "recebido", "recebida",
-            "débito", "debito", "crédito", "credito", "aprovada", "aprovado", "autorizada",
-            "autorizado", "confirmada", "confirmado", "transação", "transacao", "saque", "boleto",
-            "carteira", "wallet", "google pay", "gpay", "aproximação", "aproximacao", "contactless",
-            "gasto", "gastou"
-        )
-
-        val hasTransactionKeyword = transactionKeywords.any { full.contains(it) }
-        val hasMerchantPattern = Regex("""(em|no|na|para|de)\s+[a-z0-9]""").containsMatchIn(full)
-
-        return hasTransactionKeyword || hasMerchantPattern
+    private fun containsAny(text: String, keywords: List<String>): Boolean {
+        return keywords.any { Regex("""(?<!\p{L})""" + Regex.escape(it) + """(?!\p{L})""").containsMatchIn(text) }
     }
 
     private fun getApplicationName(packageName: String): String {
@@ -178,16 +170,11 @@ class ChokinNotificationListenerService : NotificationListenerService() {
             val pm = applicationContext.packageManager
             val ai = pm.getApplicationInfo(packageName, 0)
             val label = pm.getApplicationLabel(ai).toString()
-            if (packageName == "com.google.android.gms") {
-                "Google Wallet"
-            } else {
-                label
-            }
+            label
         } catch (e: Exception) {
             val lower = packageName.lowercase()
             when {
                 lower.contains("nu.production") || lower.contains("nubank") -> "Nubank"
-                lower.contains("walletnfcrel") || lower.contains("google.android.gms") || lower.contains("wallet") -> "Google Wallet"
                 lower.contains("spay") || lower.contains("samsung") -> "Samsung Pay"
                 lower.contains("bb.android") -> "Banco do Brasil"
                 lower.contains("itau") -> "Itaú"

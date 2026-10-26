@@ -4,7 +4,6 @@ import 'package:chokin/domain/notifications/notification_bridge_service.dart';
 import 'package:chokin/domain/notifications/parsers/notification_parser.dart';
 import 'package:chokin/domain/notifications/parsers/nubank_parser.dart';
 import 'package:chokin/domain/notifications/parsers/generic_bank_parser.dart';
-import 'package:chokin/domain/notifications/parsers/google_wallet_parser.dart';
 
 void main() {
   group('Notification Anti-Promo & Financial Transaction Filtering Tests', () {
@@ -176,9 +175,52 @@ void main() {
       expect(draft.paymentMethod, equals('creditCard'));
     });
 
-    test('Google Wallet / Carteira do Google: contactless payment is parsed correctly', () {
+    test('Propaganda do Mercado Pago com valor em reais é descartada', () {
       final payload = RawNotificationPayload(
-        id: 'n_wallet_1',
+        id: 'n_mp_promo',
+        packageName: 'com.mercadopago.wallet',
+        appName: 'Mercado Pago',
+        rawTitle: 'Venda de qualquer lugar',
+        rawText: 'Com Tap seu celular vira maquininha de graça, sem pegadinha ou letras miúdas. '
+            'Receba em segundos com taxa a partir de R\$ 0,89',
+        timestamp: DateTime.now(),
+      );
+
+      expect(bridge.processRawNotification(payload), isNull);
+      expect(bridge.describeOutcome(payload), startsWith('descartada'));
+    });
+
+    test('Aviso sem palavra de transação não vira lançamento', () {
+      final payload = RawNotificationPayload(
+        id: 'n_no_kw',
+        packageName: 'com.mercadopago.wallet',
+        appName: 'Mercado Pago',
+        rawTitle: 'Seu saldo no Mercado Pago',
+        rawText: 'Hoje você tem R\$ 12,00 disponíveis',
+        timestamp: DateTime.now(),
+      );
+
+      expect(bridge.processRawNotification(payload), isNull);
+    });
+
+    test('Estabelecimento com nome parecido com palavra de promoção não bloqueia a compra', () {
+      final payload = RawNotificationPayload(
+        id: 'n_tapioca',
+        packageName: 'com.nu.production',
+        appName: 'Nubank',
+        rawTitle: 'Compra no crédito aprovada',
+        rawText: 'Compra de R\$ 18,00 APROVADA em TAPIOCA DA VILA para o cartão com final 1234.',
+        timestamp: DateTime.now(),
+      );
+
+      final item = bridge.processRawNotification(payload);
+      expect(item, isNotNull);
+      expect(item!.parsedAmount, equals(18.00));
+    });
+
+    test('Carteira do Google não é mais lida', () {
+      final payload = RawNotificationPayload(
+        id: 'n_wallet_off',
         packageName: 'com.google.android.apps.walletnfcrel',
         appName: 'Carteira do Google',
         rawTitle: 'Carteira do Google',
@@ -186,42 +228,7 @@ void main() {
         timestamp: DateTime.now(),
       );
 
-      final walletParser = GoogleWalletParser();
-      expect(walletParser.canHandle(payload), isTrue);
-
-      final draft = walletParser.parse(payload);
-      expect(draft, isNotNull);
-      expect(draft!.amount, equals(38.50));
-      expect(draft.merchant, equals('Padaria Bella'));
-      expect(draft.sourceApp, equals('Google Wallet'));
-
-      final inboxItem = bridge.processRawNotification(payload);
-      expect(inboxItem, isNotNull);
-      expect(inboxItem!.parsedAmount, equals(38.50));
-      expect(inboxItem.parsedMerchant, equals('Padaria Bella'));
-    });
-
-    test('Google Wallet: contactless payment via Google Play Services (com.google.android.gms)', () {
-      final payload = RawNotificationPayload(
-        id: 'n_wallet_gms',
-        packageName: 'com.google.android.gms',
-        appName: 'Google Wallet',
-        rawTitle: 'Google Pay',
-        rawText: 'Você pagou R\$ 15,20 para Drogaria São Paulo',
-        timestamp: DateTime.now(),
-      );
-
-      final walletParser = GoogleWalletParser();
-      expect(walletParser.canHandle(payload), isTrue);
-
-      final draft = walletParser.parse(payload);
-      expect(draft, isNotNull);
-      expect(draft!.amount, equals(15.20));
-      expect(draft.merchant, equals('Drogaria São Paulo'));
-
-      final inboxItem = bridge.processRawNotification(payload);
-      expect(inboxItem, isNotNull);
-      expect(inboxItem!.parsedAmount, equals(15.20));
+      expect(bridge.processRawNotification(payload), isNull);
     });
 
     test('NotificationParser.extractAmount supports comma, dot, and plain integer amounts', () {
@@ -232,12 +239,12 @@ void main() {
       expect(NotificationParser.extractAmount('Você pagou R\$ 50 no débito'), equals(50.00));
     });
 
-    test('simulateTestNotification creates a valid pending Inbox item for Google Wallet', () async {
+    test('simulateTestNotification creates a valid pending Inbox item for Nubank', () async {
       final item = await bridge.simulateTestNotification();
       expect(item, isNotNull);
       expect(item!.parsedAmount, equals(25.50));
       expect(item.parsedMerchant, equals('Supermercado Teste'));
-      expect(item.appName, equals('Carteira do Google'));
+      expect(item.appName, equals('Nubank'));
     });
   });
 }
