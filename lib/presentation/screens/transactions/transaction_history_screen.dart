@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
@@ -696,7 +697,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                 left: 20,
                 right: 20,
                 top: 20,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+                bottom: math.max(MediaQuery.of(ctx).viewInsets.bottom, MediaQuery.of(ctx).viewPadding.bottom) + 20,
               ),
               child: SingleChildScrollView(
                 child: Column(
@@ -1026,7 +1027,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                 left: 20,
                 right: 20,
                 top: 20,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+                bottom: math.max(MediaQuery.of(ctx).viewInsets.bottom, MediaQuery.of(ctx).viewPadding.bottom) + 20,
               ),
               child: SingleChildScrollView(
                 child: Column(

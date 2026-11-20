@@ -8,6 +8,7 @@ import '../../../core/utils/currency_utils.dart';
 import '../../../core/utils/money.dart';
 import '../../../domain/entities/credit_card.dart';
 import '../../../domain/entities/inbox_notification.dart';
+import '../../../domain/entities/person.dart';
 import '../../../domain/entities/transaction.dart';
 import '../../../domain/parsers/nubank_csv_parser.dart';
 import '../../widgets/sumi_widgets.dart';
@@ -27,6 +28,9 @@ class _InboxScreenState extends State<InboxScreen> {
   static const _uuid = Uuid();
 
   final Map<String, String> _categoryChoice = {};
+  final Map<String, String> _personChoice = {};
+  final Map<String, String> _nameChoice = {};
+  final Map<String, String> _payChoice = {};
 
   FinancialStateNotifier get notifier => widget.notifier;
 
@@ -34,13 +38,29 @@ class _InboxScreenState extends State<InboxScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  String _nameFor(InboxNotification item) => _nameChoice[item.id] ?? item.parsedMerchant ?? item.rawTitle;
+
+  Person? _personFor(InboxNotification item) {
+    final id = _personChoice[item.id] ?? Person.meId;
+    return notifier.state.people.where((p) => p.id == id).firstOrNull;
+  }
+
   PaymentMethod _methodFor(InboxNotification item) {
+    final choice = _payChoice[item.id];
+    if (choice == 'pix') return PaymentMethod.pix;
+    if (choice == 'cash') return PaymentMethod.cash;
+    if (choice != null) return PaymentMethod.creditCard;
     return PaymentMethod.values.where((m) => m.name == item.suggestedPaymentMethod).firstOrNull ??
         PaymentMethod.creditCard;
   }
 
   CreditCard? _cardFor(InboxNotification item) {
     final cards = notifier.state.cards;
+    final choice = _payChoice[item.id];
+    if (choice != null && choice.startsWith('card:')) {
+      final chosen = cards.where((c) => c.id == choice.substring(5)).firstOrNull;
+      if (chosen != null) return chosen;
+    }
     final appWord = item.appName.toLowerCase().split(' ').first;
     return cards.where((c) => appWord.isNotEmpty && c.name.toLowerCase().contains(appWord)).firstOrNull ??
         cards.firstOrNull;
@@ -76,10 +96,11 @@ class _InboxScreenState extends State<InboxScreen> {
     }
     final transaction = FinancialTransaction(
       id: _uuid.v4(),
-      description: item.parsedMerchant ?? item.rawTitle,
+      description: _nameFor(item),
       amountCents: Money.fromReais(item.parsedAmount ?? 0),
       purchaseDate: item.eventTimestamp,
       categoryId: _categoryChoice[item.id] ?? _defaultCategory(),
+      personId: _personFor(item)?.id ?? Person.meId,
       paymentMethod: method,
       cardId: card?.id,
       sourceNotificationId: item.id,
@@ -94,9 +115,9 @@ class _InboxScreenState extends State<InboxScreen> {
       MaterialPageRoute(
         builder: (_) => NewTransactionScreen(
           notifier: notifier,
-          initialDescription: item.parsedMerchant ?? item.rawTitle,
+          initialDescription: _nameFor(item),
           initialAmount: item.parsedAmount,
-          initialPaymentMethod: item.suggestedPaymentMethod,
+          initialPaymentMethod: _payChoice[item.id] == null ? item.suggestedPaymentMethod : _methodFor(item).name,
           initialSourceNotificationId: item.id,
         ),
       ),
@@ -137,6 +158,77 @@ class _InboxScreenState extends State<InboxScreen> {
       ),
     );
     if (chosen != null) setState(() => _categoryChoice[item.id] = chosen);
+  }
+
+  Future<String?> _pickOne(String title, List<(String, String, bool)> options) {
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Sumi.bodyStrong.copyWith(fontSize: 18)),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (value, label, selected) in options)
+                    ChoiceChipSumi(label: label, selected: selected, onTap: () => Navigator.of(ctx).pop(value)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickPerson(InboxNotification item) async {
+    final current = _personChoice[item.id] ?? Person.meId;
+    final chosen = await _pickOne('Quem assina a compra', [
+      for (final p in notifier.state.people) (p.id, p.isMe ? 'Eu' : p.name, p.id == current),
+    ]);
+    if (chosen != null) setState(() => _personChoice[item.id] = chosen);
+  }
+
+  Future<void> _pickPayment(InboxNotification item) async {
+    final method = _methodFor(item);
+    final card = _cardFor(item);
+    final chosen = await _pickOne('Forma de pagamento', [
+      ('pix', 'Pix', method == PaymentMethod.pix),
+      ('cash', 'Dinheiro/Débito', method == PaymentMethod.cash),
+      for (final c in notifier.state.cards)
+        ('card:${c.id}', c.name, method == PaymentMethod.creditCard && card?.id == c.id),
+    ]);
+    if (chosen != null) setState(() => _payChoice[item.id] = chosen);
+  }
+
+  Future<void> _editName(InboxNotification item) async {
+    final controller = TextEditingController(text: _nameFor(item));
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nome da compra'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(controller.text), child: const Text('Salvar')),
+        ],
+      ),
+    );
+    controller.dispose();
+    final name = result?.trim();
+    if (name != null && name.isNotEmpty) setState(() => _nameChoice[item.id] = name);
   }
 
   @override
@@ -226,7 +318,19 @@ class _InboxScreenState extends State<InboxScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                  child: Text(item.parsedMerchant ?? item.rawTitle, style: Sumi.bodyStrong.copyWith(fontSize: 16))),
+                child: Semantics(
+                  button: true,
+                  label: 'Nome: ${_nameFor(item)}. Toque para editar',
+                  excludeSemantics: true,
+                  child: InkWell(
+                    onTap: () => _editName(item),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(_nameFor(item), style: Sumi.bodyStrong.copyWith(fontSize: 16)),
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(width: 12),
               if (item.parsedAmount != null) Text(CurrencyUtils.format(item.parsedAmount!), style: Sumi.figures(19)),
             ],
@@ -262,7 +366,18 @@ class _InboxScreenState extends State<InboxScreen> {
                 semanticLabel: 'Categoria: ${category?.name ?? 'nenhuma'}. Toque para trocar',
                 onTap: () => _pickCategory(item),
               ),
-              Text(methodLabel, style: Sumi.caption),
+              ChoiceChipSumi(
+                label: methodLabel,
+                selected: false,
+                semanticLabel: 'Pagamento: $methodLabel. Toque para trocar',
+                onTap: () => _pickPayment(item),
+              ),
+              ChoiceChipSumi(
+                label: _personFor(item)?.isMe ?? true ? 'Eu' : _personFor(item)!.name,
+                selected: false,
+                semanticLabel: 'Quem assina: ${_personFor(item)?.name ?? 'Eu'}. Toque para trocar',
+                onTap: () => _pickPerson(item),
+              ),
             ],
           ),
           const SizedBox(height: 8),
