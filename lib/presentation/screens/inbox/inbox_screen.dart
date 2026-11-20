@@ -133,7 +133,7 @@ class _InboxScreenState extends State<InboxScreen> {
       isScrollControlled: true,
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 16),
+          padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -166,7 +166,7 @@ class _InboxScreenState extends State<InboxScreen> {
       isScrollControlled: true,
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 16),
+          padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,7 +411,7 @@ class _InboxScreenState extends State<InboxScreen> {
       context: context,
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 16),
+          padding: const EdgeInsets.fromLTRB(Sumi.gutter, 0, Sumi.gutter, 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

@@ -44,7 +44,7 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const currentVersion = '1.1.5';
+  static const currentVersion = '1.1.6';
   static const repoOwner = 'LuGoAn';
   static const repoName = 'chokin';
 
