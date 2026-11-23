@@ -1026,7 +1026,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.download, size: 16),
-              label: const Text('Baixar chokin.apk'),
+              label: const Text('Baixar atualização'),
               onPressed: () {
                 Navigator.of(ctx).pop();
                 if (info.apkDownloadUrl != null) {

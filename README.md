@@ -4,6 +4,17 @@ App de finanças pessoais pra Android que eu fiz porque nenhum dos que testei se
 
 Tudo fica salvo no celular (SQLite). Não tem conta, nem servidor, nem telemetria.
 
+<p align="center">
+  <img src="docs/screenshots/inicio.png" alt="Tela inicial com saldo, cartões e cobranças do mês" width="24%">
+  <img src="docs/screenshots/extrato.png" alt="Extrato do mês com compras feitas pra outra pessoa" width="24%">
+  <img src="docs/screenshots/faturas.png" alt="Fatura de um cartão com as parcelas" width="24%">
+  <img src="docs/screenshots/cobrancas.png" alt="Cobranças a receber, parcela por parcela" width="24%">
+</p>
+
+## Por que o visual é assim
+
+O app é inspirado no kakeibo, o caderninho japonês de finanças domésticas: fundo escuro de tinta, texto cor de papel e uma única cor de destaque. Os caracteres em japonês que aparecem na tela inicial (残高, "saldo") são só uma referência a isso, não tem tradução escondida nem idioma pra trocar. O app inteiro é em português.
+
 ## O que ele faz
 
 Um exemplo do dia a dia: chega a notificação do banco de uma compra de R$ 120,00 no cartão. O app captura, joga na Caixa de Entrada e eu só confirmo ou descarto. Se foi uma compra pro meu primo, marco o devedor, e ela entra na fatura do cartão mas não no meu gasto do mês.
