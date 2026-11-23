@@ -61,8 +61,7 @@ abstract final class MigrationV6 {
     final movements = movementRows.map(FinancialMovement.fromMap).toList();
     final openings = Ledger.openingAdjustments(
       movements: movements,
-      targetAvailableCents: legacyAvailable,
-      targetReserveCents: legacyReserve,
+      targetAvailableCents: legacyAvailable + legacyReserve,
       date: _earliestActivity(result, refNow),
     );
     if (openings.isNotEmpty) {

@@ -13,7 +13,6 @@ class AppColors {
 
   static const Color income = Color(0xFF9CB59A);
   static const Color expense = Color(0xFFD97A66);
-  static const Color reserve = Color(0xFF8FA9C2);
   static const Color committed = Color(0xFFD4A65A);
   static const Color reimbursement = Color(0xFFB79FC9);
   static const Color warning = Color(0xFFD4A65A);

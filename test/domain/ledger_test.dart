@@ -51,23 +51,21 @@ void main() {
   });
 
   group('Saldos vêm do livro-razão', () {
-    test('Excluir uma despesa coberta pela caixinha devolve o dinheiro para a caixinha', () {
-      var state = FinancialState.reconciled(availableCents: 10000, reserveCents: 50000, people: [me]);
+    test('Excluir uma despesa devolve o dinheiro ao saldo', () {
+      var state = FinancialState.reconciled(availableCents: 50000, people: [me]);
 
       state = FinancialMovementEngine.processNewTransaction(
         currentState: state,
         transaction: pix('mercado', 30000, DateTime(2026, 8, 10)),
       );
-      expect(state.availableCents, 0);
-      expect(state.reserveCents, 30000);
+      expect(state.availableCents, 20000);
 
       state = FinancialMovementEngine.deleteTransaction(currentState: state, transactionId: 'mercado');
-      expect(state.availableCents, 10000);
-      expect(state.reserveCents, 50000);
+      expect(state.availableCents, 50000);
     });
 
-    test('Saldo de um mês passado considera a cobertura pela caixinha', () {
-      var state = FinancialState.reconciled(availableCents: 10000, reserveCents: 50000, people: [me]);
+    test('Saldo de um mês passado não conta o que entrou depois', () {
+      var state = FinancialState.reconciled(availableCents: 10000, people: [me]);
       state = FinancialMovementEngine.processNewTransaction(
         currentState: state,
         transaction: pix('aluguel', 30000, DateTime(2026, 8, 10)),
@@ -77,25 +75,35 @@ void main() {
         transaction: pix('salario', 200000, DateTime(2026, 9, 5), type: TransactionType.income),
       );
 
-      final august = FinancialMovementEngine.calculateHistoricalBalancesCents(state: state, month: 8, year: 2026);
-      expect(august.available, 0);
-      expect(august.reserve, 30000);
+      final august = FinancialMovementEngine.calculateHistoricalBalanceCents(state: state, month: 8, year: 2026);
+      expect(august, -20000);
     });
 
-    test('A caixinha continua separada do saldo disponível', () {
-      var state = FinancialState.reconciled(availableCents: 80000, people: [me]);
-      state = FinancialMovementEngine.transferSurplusToReserve(currentState: state, periodDate: DateTime(2026, 8, 31));
-      expect(state.availableCents, 0);
-      expect(state.reserveCents, 80000);
-      expect(Ledger.balances(state.movements), (available: 0, reserve: 80000));
-    });
-
-    test('Guardar sobras num mês futuro não cria movimentação no futuro', () {
-      var state = FinancialState.reconciled(availableCents: 5000, people: [me]);
-      final future = DateTime.now().add(const Duration(days: 60));
-      state = FinancialMovementEngine.transferSurplusToReserve(currentState: state, periodDate: future);
-      final transfer = state.movements.firstWhere((m) => m.type == MovementType.transferToReserve);
-      expect(transfer.movementDate.isAfter(DateTime.now()), isFalse);
+    test('Movimentos antigos da caixinha não mudam o saldo total', () {
+      final movements = [
+        FinancialMovement(
+          id: 'a',
+          type: MovementType.manualAdjustment,
+          amountCents: 80000,
+          movementDate: DateTime(2026, 8, 1),
+          description: 'Saldo inicial',
+        ),
+        FinancialMovement(
+          id: 'b',
+          type: MovementType.transferToReserve,
+          amountCents: 50000,
+          movementDate: DateTime(2026, 8, 2),
+          description: 'Transferência automática para reserva',
+        ),
+        FinancialMovement(
+          id: 'c',
+          type: MovementType.reserveCompensation,
+          amountCents: 20000,
+          movementDate: DateTime(2026, 8, 3),
+          description: 'Complemento de despesas pela reserva',
+        ),
+      ];
+      expect(Ledger.balance(movements), 80000);
     });
 
     test('Ajustar o saldo registra a diferença: saldo inicial e depois ajuste', () {
@@ -112,13 +120,6 @@ void main() {
 
       final unchanged = FinancialMovementEngine.adjustBalances(currentState: state, availableCents: 195000);
       expect(unchanged.movements.length, state.movements.length);
-    });
-
-    test('Ajustar o saldo disponível não mexe na caixinha', () {
-      var state = FinancialState.reconciled(availableCents: 10000, reserveCents: 70000, people: [me]);
-      state = FinancialMovementEngine.adjustBalances(currentState: state, availableCents: 12000);
-      expect(state.availableCents, 12000);
-      expect(state.reserveCents, 70000);
     });
   });
 

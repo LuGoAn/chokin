@@ -75,10 +75,6 @@ class DashboardScreen extends StatelessWidget {
               _buildBalanceHero(summary),
               const SizedBox(height: 24),
               _buildLedgerLines(context, summary),
-              if (_isCurrentMonth && summary.availableCents > 0) ...[
-                const SizedBox(height: 16),
-                _buildSaveSurplusButton(context, summary.availableCents),
-              ],
               const SizedBox(height: 32),
               _buildCardsSection(context, state),
               const SizedBox(height: 32),
@@ -171,7 +167,6 @@ class DashboardScreen extends StatelessWidget {
 
     return Column(
       children: [
-        LedgerLine(label: 'Caixinha', value: CurrencyUtils.formatCents(summary.reserveCents)),
         LedgerLine(
           label: 'Gasto pessoal em $_selectedMonthName',
           value: CurrencyUtils.formatCents(summary.periodPaidExpensesCents),
@@ -193,40 +188,6 @@ class DashboardScreen extends StatelessWidget {
           showBottomBorder: true,
         ),
       ],
-    );
-  }
-
-  Widget _buildSaveSurplusButton(BuildContext context, int surplusCents) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        icon: const Icon(Icons.savings_outlined, size: 18),
-        label: Text('Guardar ${CurrencyUtils.formatCents(surplusCents)} na Caixinha'),
-        onPressed: () async {
-          final confirm = await showDialog<bool>(
-            context: context,
-            builder: (dCtx) => AlertDialog(
-              title: const Text('Guardar sobra na Caixinha?'),
-              content: Text(
-                'Todo o saldo disponível (${CurrencyUtils.formatCents(surplusCents)}) vai para a Caixinha, '
-                'e o mês seguinte começa com a conta zerada.',
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.of(dCtx).pop(false), child: const Text('Cancelar')),
-                ElevatedButton(onPressed: () => Navigator.of(dCtx).pop(true), child: const Text('Guardar')),
-              ],
-            ),
-          );
-          if (confirm == true) {
-            await notifier.transferSurplusToReserve();
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Sobra guardada na Caixinha.')),
-              );
-            }
-          }
-        },
-      ),
     );
   }
 

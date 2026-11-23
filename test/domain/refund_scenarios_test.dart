@@ -20,7 +20,6 @@ void main() {
 
       initialState = FinancialState.reconciled(
         availableCents: 100000,
-        reserveCents: 50000,
         transactions: [],
         invoices: [],
         installments: [],

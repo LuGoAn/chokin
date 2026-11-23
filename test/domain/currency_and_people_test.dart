@@ -70,7 +70,6 @@ void main() {
 
       var state = FinancialState.reconciled(
         availableCents: 0,
-        reserveCents: 0,
         transactions: [],
         invoices: [],
         installments: [],

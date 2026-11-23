@@ -22,10 +22,9 @@ void main() {
     createdAt: DateTime(2026, 1, 1),
   );
 
-  FinancialState getInitialState({double available = 1000.0, double reserve = 500.0}) {
+  FinancialState getInitialState({double available = 1000.0}) {
     return FinancialState.reconciled(
       availableCents: Money.fromReais(available),
-      reserveCents: Money.fromReais(reserve),
       cards: [defaultCard],
       people: [Person(id: 'ME', name: 'Eu', createdAt: DateTime(2026, 1, 1)), personBob],
     );
@@ -48,7 +47,6 @@ void main() {
 
       final state = FinancialState.reconciled(
         availableCents: 100000,
-        reserveCents: 50000,
         transactions: [baseTx],
       );
 
@@ -306,7 +304,7 @@ void main() {
     });
   });
 
-  group('Saldo e Caixinha Históricos (calculateHistoricalBalances)', () {
+  group('Saldo histórico (calculateHistoricalBalance)', () {
     test('Reverte movimentações de meses posteriores para reproduzir o saldo de fechamento do mês anterior', () {
       final augIncome = FinancialMovement(
         id: 'm1',
@@ -315,14 +313,6 @@ void main() {
         amountCents: 20000,
         movementDate: DateTime(2026, 8, 10),
         description: 'Salário de Agosto',
-      );
-      final augReserve = FinancialMovement(
-        id: 'm2',
-        transactionId: null,
-        type: MovementType.transferToReserve,
-        amountCents: 30000,
-        movementDate: DateTime(2026, 8, 20),
-        description: 'Transferência para caixinha',
       );
       final sepIncome = FinancialMovement(
         id: 'm3',
@@ -343,18 +333,16 @@ void main() {
 
       final state = FinancialState.reconciled(
         availableCents: 150000,
-        reserveCents: 80000,
-        movements: [augIncome, augReserve, sepIncome, sepExpense],
+        movements: [augIncome, sepIncome, sepExpense],
       );
 
-      final (histAvail, histRes) = FinancialMovementEngine.calculateHistoricalBalances(
+      final histAvail = FinancialMovementEngine.calculateHistoricalBalance(
         state: state,
         month: 8,
         year: 2026,
       );
 
       expect(histAvail, 1100.0);
-      expect(histRes, 800.0);
     });
   });
 
@@ -508,7 +496,6 @@ void main() {
 
       final initialState = FinancialState.reconciled(
         availableCents: 100000,
-        reserveCents: 50000,
         reimbursements: [r],
         movements: [],
       );
@@ -568,7 +555,6 @@ void main() {
 
       final state = FinancialState.reconciled(
         availableCents: 50000,
-        reserveCents: 20000,
         reimbursements: [rSettled],
         movements: [legacyMov],
       );
@@ -674,25 +660,22 @@ void main() {
 
       final state = FinancialState.reconciled(
         availableCents: 100000,
-        reserveCents: 0,
         movements: [augMov],
       );
 
-      final (availJul, resJul) = FinancialMovementEngine.calculateHistoricalBalances(
+      final availJul = FinancialMovementEngine.calculateHistoricalBalance(
         state: state,
         month: 7,
         year: 2026,
       );
       expect(availJul, 0.0);
-      expect(resJul, 0.0);
 
-      final (availAug, resAug) = FinancialMovementEngine.calculateHistoricalBalances(
+      final availAug = FinancialMovementEngine.calculateHistoricalBalance(
         state: state,
         month: 8,
         year: 2026,
       );
       expect(availAug, 1000.0);
-      expect(resAug, 0.0);
     });
 
     test('calculateHistoricalBalances: avançar no tempo e retornar ao mês atual não inflaciona o saldo atual', () {
@@ -714,7 +697,6 @@ void main() {
 
       var state = FinancialState.reconciled(
         availableCents: 300000,
-        reserveCents: 50000,
         transactions: [salaryTx],
         movements: [
           FinancialMovement(
@@ -728,13 +710,12 @@ void main() {
         ],
       );
 
-      final (initialAvail, initialRes) = FinancialMovementEngine.calculateHistoricalBalances(
+      final initialAvail = FinancialMovementEngine.calculateHistoricalBalance(
         state: state,
         month: currentMonth,
         year: currentYear,
       );
       expect(initialAvail, equals(3000.0));
-      expect(initialRes, equals(500.0));
 
       var futureTargetMonth = currentMonth + 3;
       var futureTargetYear = currentYear;
@@ -751,20 +732,19 @@ void main() {
 
       expect(state.availableBalance, equals(3000.0));
 
-      final (futureAvail, _) = FinancialMovementEngine.calculateHistoricalBalances(
+      final futureAvail = FinancialMovementEngine.calculateHistoricalBalance(
         state: state,
         month: futureTargetMonth,
         year: futureTargetYear,
       );
       expect(futureAvail, equals(9000.0));
 
-      final (revertedAvail, revertedRes) = FinancialMovementEngine.calculateHistoricalBalances(
+      final revertedAvail = FinancialMovementEngine.calculateHistoricalBalance(
         state: state,
         month: currentMonth,
         year: currentYear,
       );
       expect(revertedAvail, equals(3000.0));
-      expect(revertedRes, equals(500.0));
 
       final summaryCurr = FinancialMovementEngine.calculateDashboardSummary(
         state: state,
@@ -772,9 +752,7 @@ void main() {
         year: currentYear,
       );
       expect(summaryCurr.availableBalance, equals(3000.0));
-      expect(summaryCurr.reserveBalance, equals(500.0));
-      expect(summaryCurr.totalNetWorth, equals(3500.0));
-      expect(summaryCurr.freeBalance, equals(3500.0));
+      expect(summaryCurr.freeBalance, equals(3000.0));
     });
 
     test('calculateDashboardSummary: faturas de meses futuros não comprometem o saldo livre do mês presente', () {
@@ -803,7 +781,6 @@ void main() {
 
       var state = FinancialState.reconciled(
         availableCents: 300000,
-        reserveCents: 0,
         cards: [card],
         transactions: [],
         invoices: [],
@@ -855,7 +832,6 @@ void main() {
 
       var state = FinancialState.reconciled(
         availableCents: 200000,
-        reserveCents: 50000,
       );
 
       final futureDate = DateTime(currentYear, currentMonth + 1, 10);
@@ -877,14 +853,14 @@ void main() {
       expect(state.availableBalance, equals(2000.0));
       expect(state.movements.any((m) => m.transactionId == futureTx.id), isFalse);
 
-      final (currAvail, _) = FinancialMovementEngine.calculateHistoricalBalances(
+      final currAvail = FinancialMovementEngine.calculateHistoricalBalance(
         state: state,
         month: currentMonth,
         year: currentYear,
       );
       expect(currAvail, equals(2000.0));
 
-      final (futureAvail, _) = FinancialMovementEngine.calculateHistoricalBalances(
+      final futureAvail = FinancialMovementEngine.calculateHistoricalBalance(
         state: state,
         month: futureDate.month,
         year: futureDate.year,

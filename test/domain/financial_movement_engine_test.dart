@@ -28,18 +28,17 @@ void main() {
     createdAt: DateTime(2026, 1, 1),
   );
 
-  FinancialState getInitialState({double available = 0.0, double reserve = 0.0}) {
+  FinancialState getInitialState({double available = 0.0}) {
     return FinancialState.reconciled(
       availableCents: Money.fromReais(available),
-      reserveCents: Money.fromReais(reserve),
       cards: [defaultCard],
       people: [Person(id: 'ME', name: 'Eu', createdAt: DateTime(2026, 1, 1)), mother],
     );
   }
 
   group('Suíte de Testes dos 16 Cenários Obrigatórios do Chokin', () {
-    test('Cenário 1: Receita R\$ 400 + gasto R\$ 300 -> R\$ 100 enviados para reserva', () {
-      var state = getInitialState(available: 0, reserve: 1000);
+    test('Cenário 1: Receita R\$ 400 + gasto R\$ 300 -> saldo sobe R\$ 100', () {
+      var state = getInitialState(available: 1000);
 
       state = FinancialMovementEngine.processNewTransaction(
         currentState: state,
@@ -67,24 +66,11 @@ void main() {
         ),
       );
 
-      expect(state.availableBalance, 100.0);
-      expect(state.reserveBalance, 1000.0);
-
-      state = FinancialMovementEngine.transferSurplusToReserve(
-        currentState: state,
-        periodDate: DateTime(2026, 8, 31),
-      );
-
-      expect(state.availableBalance, 0.0);
-      expect(state.reserveBalance, 1100.0);
-      expect(
-        state.movements.any((m) => m.type == MovementType.transferToReserve && m.amount == 100.0),
-        isTrue,
-      );
+      expect(state.availableBalance, 1100.0);
     });
 
-    test('Cenário 2: Receita R\$ 400 + Pix R\$ 500 -> R\$ 100 retirados da reserva', () {
-      var state = getInitialState(available: 0, reserve: 1000);
+    test('Cenário 2: Receita R\$ 400 + Pix R\$ 500 -> saldo cai R\$ 100', () {
+      var state = getInitialState(available: 1000);
 
       state = FinancialMovementEngine.processNewTransaction(
         currentState: state,
@@ -112,16 +98,11 @@ void main() {
         ),
       );
 
-      expect(state.availableBalance, 0.0);
-      expect(state.reserveBalance, 900.0);
-      expect(
-        state.movements.any((m) => m.type == MovementType.reserveCompensation && m.amount == 100.0),
-        isTrue,
-      );
+      expect(state.availableBalance, 900.0);
     });
 
-    test('Cenário 3: Compra cartão R\$ 500 -> Reserva não altera imediatamente', () {
-      var state = getInitialState(available: 0, reserve: 1000);
+    test('Cenário 3: Compra cartão R\$ 500 -> saldo não muda na hora', () {
+      var state = getInitialState(available: 1000);
 
       state = FinancialMovementEngine.processNewTransaction(
         currentState: state,
@@ -137,14 +118,13 @@ void main() {
         ),
       );
 
-      expect(state.reserveBalance, 1000.0);
-      expect(state.availableBalance, 0.0);
+      expect(state.availableBalance, 1000.0);
       expect(state.invoices.isNotEmpty, isTrue);
       expect(state.invoices.first.totalAmount, 500.0);
     });
 
-    test('Cenário 4: Pagamento de fatura R\$ 500 -> Retira do dinheiro/reserva', () {
-      var state = getInitialState(available: 0, reserve: 1000);
+    test('Cenário 4: Pagamento de fatura R\$ 500 -> sai do saldo', () {
+      var state = getInitialState(available: 1000);
 
       state = FinancialMovementEngine.processNewTransaction(
         currentState: state,
@@ -168,12 +148,12 @@ void main() {
         paymentDate: DateTime(2026, 9, 8),
       );
 
-      expect(state.reserveBalance, 500.0);
+      expect(state.availableBalance, 500.0);
       expect(state.invoices.first.isPaid, isTrue);
     });
 
     test('Cenário 5: Pagamento antecipado -> Usar data real do pagamento', () {
-      var state = getInitialState(available: 600, reserve: 1000);
+      var state = getInitialState(available: 1600);
 
       state = FinancialMovementEngine.processNewTransaction(
         currentState: state,

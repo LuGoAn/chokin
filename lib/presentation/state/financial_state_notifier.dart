@@ -325,15 +325,6 @@ class FinancialStateNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> transferSurplusToReserve() async {
-    _state = FinancialMovementEngine.transferSurplusToReserve(
-      currentState: _state,
-      periodDate: DateTime.now(),
-    );
-    await repository.persistFinancialState(_state);
-    notifyListeners();
-  }
-
   Future<void> confirmInboxNotification({
     required String inboxId,
     required FinancialTransaction transaction,
@@ -515,11 +506,10 @@ class FinancialStateNotifier extends ChangeNotifier {
     await repository.saveCategoriesOrder(updatedCategories);
   }
 
-  Future<void> setInitialBalances({required int availableCents, int? reserveCents}) async {
+  Future<void> setInitialBalances({required int availableCents}) async {
     _state = FinancialMovementEngine.adjustBalances(
       currentState: _state,
       availableCents: availableCents,
-      reserveCents: reserveCents,
     );
     await repository.persistFinancialState(_state);
     notifyListeners();

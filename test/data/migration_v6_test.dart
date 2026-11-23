@@ -220,7 +220,7 @@ void main() {
 
     test('O saldo que o usuário via é preservado como saldo inicial', () {
       final movements = v6['financial_movements']!.map(FinancialMovement.fromMap).toList();
-      expect(Ledger.balances(movements), (available: 185025, reserve: 0));
+      expect(Ledger.balance(movements), 185025);
 
       final opening = movements.firstWhere((m) => m.id == 'opening_available');
       expect(opening.description, 'Saldo inicial');
@@ -244,7 +244,6 @@ void main() {
       final state = await FinancialRepository(dbHelper: helper).loadFinancialState();
 
       expect(state.availableCents, 185025);
-      expect(state.reserveCents, 0);
       expect(state.transactions.length, 4);
       expect(state.invoices.firstWhere((i) => i.month == 8).totalAmountCents, 12667);
 
@@ -371,15 +370,16 @@ void main() {
 
   final realBackupPath = Platform.environment['CHOKIN_REAL_BACKUP'];
   group('Backup real do usuário', () {
-    test('Migra sem perder nada e mantém saldo e caixinha', () async {
+    test('Migra sem perder nada e mantém o saldo', () async {
       final original = jsonDecode(File(realBackupPath!).readAsStringSync()) as Map<String, dynamic>;
       final v5Tables = <String, List<Map<String, Object?>>>{
         for (final e in (original['tables'] as Map<String, dynamic>).entries)
           e.key: [for (final r in e.value as List) Map<String, Object?>.from(r as Map)],
       };
       final settings = {for (final r in v5Tables['app_settings']!) r['key']: r['value']};
-      final expectedAvailable = (double.parse(settings['available_balance'] as String) * 100).round();
-      final expectedReserve = (double.parse(settings['reserve_balance'] as String) * 100).round();
+      // o que estava na caixinha agora soma no saldo
+      final expectedAvailable = (double.parse(settings['available_balance'] as String) * 100).round() +
+          (double.parse(settings['reserve_balance'] as String) * 100).round();
 
       final path = '${tempDir.path}/real.db';
       await createV5Database(path, v5Tables);
@@ -387,7 +387,6 @@ void main() {
       final state = await FinancialRepository(dbHelper: helper).loadFinancialState();
 
       expect(state.availableCents, expectedAvailable);
-      expect(state.reserveCents, expectedReserve);
       expect(state.people.length, v5Tables['people']!.length);
       expect(state.cards.length, v5Tables['credit_cards']!.length);
       expect(state.transactions.length, v5Tables['transactions']!.length);
@@ -425,7 +424,6 @@ void main() {
         targetYear: horizon.year,
       );
       expect(synced.availableCents, expectedAvailable);
-      expect(synced.reserveCents, expectedReserve);
       await FinancialRepository(dbHelper: helper).persistFinancialState(synced);
 
       final freshHelper = DatabaseHelper(path: '${tempDir.path}/fresh.db', preMigrationBackup: (_) async {});
@@ -434,7 +432,6 @@ void main() {
       expect(restored, isTrue);
       final fromBackup = await FinancialRepository(dbHelper: freshHelper).loadFinancialState();
       expect(fromBackup.availableCents, expectedAvailable);
-      expect(fromBackup.reserveCents, expectedReserve);
       expect(fromBackup.transactions.length, v5Tables['transactions']!.length);
 
       await helper.close();

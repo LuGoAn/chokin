@@ -35,7 +35,6 @@ class FinancialState {
 
   factory FinancialState.reconciled({
     int availableCents = 0,
-    int reserveCents = 0,
     List<FinancialTransaction> transactions = const [],
     List<Invoice> invoices = const [],
     List<Installment> installments = const [],
@@ -57,7 +56,6 @@ class FinancialState {
         ...Ledger.openingAdjustments(
           movements: movements,
           targetAvailableCents: availableCents,
-          targetReserveCents: reserveCents,
           date: earliest,
         ),
         ...movements,
@@ -67,15 +65,11 @@ class FinancialState {
     );
   }
 
-  static final Expando<LedgerBalances> _balancesCache = Expando('balances');
+  static final Expando<int> _balanceCache = Expando('balance');
 
-  LedgerBalances get balances => _balancesCache[this] ??= Ledger.balances(movements);
-
-  int get availableCents => balances.available;
-  int get reserveCents => balances.reserve;
+  int get availableCents => _balanceCache[this] ??= Ledger.balance(movements);
 
   double get availableBalance => Money.toReais(availableCents);
-  double get reserveBalance => Money.toReais(reserveCents);
 
   FinancialState copyWith({
     List<FinancialTransaction>? transactions,
@@ -101,41 +95,26 @@ class FinancialState {
 class FinancialMovementEngine {
   static const _uuid = Uuid();
 
-  static List<FinancialMovement> _cashOut({
-    required int availableCents,
+  static FinancialMovement _cashOut({
     required int amountCents,
     required MovementType type,
     required DateTime date,
     required String description,
-    required String compensationDescription,
     String? transactionId,
     String? invoiceId,
   }) {
-    final deficit = amountCents - math.max<int>(0, availableCents);
-    return [
-      FinancialMovement(
-        id: _uuid.v4(),
-        transactionId: transactionId,
-        invoiceId: invoiceId,
-        type: type,
-        amountCents: amountCents,
-        movementDate: date,
-        description: description,
-      ),
-      if (deficit > 0)
-        FinancialMovement(
-          id: _uuid.v4(),
-          transactionId: transactionId,
-          invoiceId: invoiceId,
-          type: MovementType.reserveCompensation,
-          amountCents: deficit,
-          movementDate: date,
-          description: compensationDescription,
-        ),
-    ];
+    return FinancialMovement(
+      id: _uuid.v4(),
+      transactionId: transactionId,
+      invoiceId: invoiceId,
+      type: type,
+      amountCents: amountCents,
+      movementDate: date,
+      description: description,
+    );
   }
 
-  static List<FinancialMovement> _movementsForImmediate(FinancialTransaction tx, int availableCents) {
+  static List<FinancialMovement> _movementsForImmediate(FinancialTransaction tx) {
     if (tx.type == TransactionType.income) {
       return [
         FinancialMovement(
@@ -148,15 +127,15 @@ class FinancialMovementEngine {
         ),
       ];
     }
-    return _cashOut(
-      availableCents: availableCents,
-      amountCents: tx.amountCents,
-      type: MovementType.expensePaid,
-      date: tx.purchaseDate,
-      transactionId: tx.id,
-      description: 'Despesa: ${tx.description}',
-      compensationDescription: 'Complemento de despesas pela reserva',
-    );
+    return [
+      _cashOut(
+        amountCents: tx.amountCents,
+        type: MovementType.expensePaid,
+        date: tx.purchaseDate,
+        transactionId: tx.id,
+        description: 'Despesa: ${tx.description}',
+      ),
+    ];
   }
 
   static List<Invoice> _recalculateInvoiceTotals(List<Invoice> invoices, List<Installment> installments) {
@@ -197,7 +176,7 @@ class FinancialMovementEngine {
       updatedInstallments.addAll(newInstallments);
       updatedInvoices = _recalculateInvoiceTotals(updatedInvoices, updatedInstallments);
     } else if (!isFuture) {
-      updatedMovements.addAll(_movementsForImmediate(transaction, state.availableCents));
+      updatedMovements.addAll(_movementsForImmediate(transaction));
     }
 
     if (transaction.type == TransactionType.expense && transaction.isForThirdParty) {
@@ -223,61 +202,25 @@ class FinancialMovementEngine {
     );
   }
 
-  static FinancialState transferSurplusToReserve({
+  static FinancialState adjustBalances({
     required FinancialState currentState,
-    required DateTime periodDate,
+    required int availableCents,
+    DateTime? date,
   }) {
-    final surplus = currentState.availableCents;
-    if (surplus <= 0) return currentState;
-
-    final now = DateTime.now();
-    final date = periodDate.isAfter(now) ? now : periodDate;
+    final isFirst = currentState.movements.isEmpty;
+    final diff = availableCents - currentState.availableCents;
+    if (diff == 0) return currentState;
 
     return currentState.copyWith(
       movements: [
         ...currentState.movements,
         FinancialMovement(
           id: _uuid.v4(),
-          type: MovementType.transferToReserve,
-          amountCents: surplus,
-          movementDate: date,
-          description: 'Transferência automática para reserva',
+          type: MovementType.manualAdjustment,
+          amountCents: diff,
+          movementDate: date ?? DateTime.now(),
+          description: isFirst ? 'Saldo inicial' : 'Ajuste de saldo',
         ),
-      ],
-    );
-  }
-
-  static FinancialState adjustBalances({
-    required FinancialState currentState,
-    required int availableCents,
-    int? reserveCents,
-    DateTime? date,
-  }) {
-    final when = date ?? DateTime.now();
-    final isFirst = currentState.movements.isEmpty;
-    final diffAvailable = availableCents - currentState.availableCents;
-    final diffReserve = reserveCents == null ? 0 : reserveCents - currentState.reserveCents;
-    if (diffAvailable == 0 && diffReserve == 0) return currentState;
-
-    return currentState.copyWith(
-      movements: [
-        ...currentState.movements,
-        if (diffAvailable != 0)
-          FinancialMovement(
-            id: _uuid.v4(),
-            type: MovementType.manualAdjustment,
-            amountCents: diffAvailable,
-            movementDate: when,
-            description: isFirst ? 'Saldo inicial' : 'Ajuste de saldo',
-          ),
-        if (diffReserve != 0)
-          FinancialMovement(
-            id: _uuid.v4(),
-            type: MovementType.reserveAdjustment,
-            amountCents: diffReserve,
-            movementDate: when,
-            description: isFirst ? 'Saldo inicial da caixinha' : 'Ajuste da caixinha',
-          ),
       ],
     );
   }
@@ -295,14 +238,12 @@ class FinancialMovementEngine {
     final amountToPay = customAmountCents ?? invoice.totalAmountCents;
 
     final updatedMovements = List<FinancialMovement>.from(currentState.movements)
-      ..addAll(_cashOut(
-        availableCents: currentState.availableCents,
+      ..add(_cashOut(
         amountCents: amountToPay,
         type: MovementType.invoicePayment,
         date: paymentDate,
         invoiceId: invoiceId,
         description: 'Pagamento de fatura ${invoice.month}/${invoice.year}',
-        compensationDescription: 'Complemento de fatura pela reserva',
       ));
 
     final updatedInvoices = List<Invoice>.from(currentState.invoices);
@@ -530,7 +471,7 @@ class FinancialMovementEngine {
     );
   }
 
-  static LedgerBalances calculateHistoricalBalancesCents({
+  static int calculateHistoricalBalanceCents({
     required FinancialState state,
     required int month,
     required int year,
@@ -540,11 +481,10 @@ class FinancialMovementEngine {
     final isCurrentMonth = year == now.year && month == now.month;
     final endOfMonth = DateTime(year, month + 1, 0, 23, 59, 59);
 
-    if (isCurrentMonth) return state.balances;
-    if (isPastMonth) return Ledger.balances(state.movements, upTo: endOfMonth);
+    if (isCurrentMonth) return state.availableCents;
+    if (isPastMonth) return Ledger.balance(state.movements, upTo: endOfMonth);
 
     var projectedAvailable = state.availableCents;
-    var projectedReserve = state.reserveCents;
 
     final futureTx = state.transactions
         .where((t) => !t.isCancelled && t.purchaseDate.isAfter(now) && !t.purchaseDate.isAfter(endOfMonth))
@@ -555,25 +495,19 @@ class FinancialMovementEngine {
       if (t.type == TransactionType.income) {
         projectedAvailable += t.amountCents;
       } else if (!t.isCreditCard) {
-        final deficit = t.amountCents - math.max<int>(0, projectedAvailable);
         projectedAvailable -= t.amountCents;
-        if (deficit > 0) {
-          projectedAvailable += deficit;
-          projectedReserve -= deficit;
-        }
       }
     }
 
-    return (available: projectedAvailable, reserve: projectedReserve);
+    return projectedAvailable;
   }
 
-  static (double available, double reserve) calculateHistoricalBalances({
+  static double calculateHistoricalBalance({
     required FinancialState state,
     required int month,
     required int year,
   }) {
-    final b = calculateHistoricalBalancesCents(state: state, month: month, year: year);
-    return (Money.toReais(b.available), Money.toReais(b.reserve));
+    return Money.toReais(calculateHistoricalBalanceCents(state: state, month: month, year: year));
   }
 
   static FinancialState realizeMaturedTransactions(FinancialState state, {DateTime? now}) {
@@ -589,14 +523,9 @@ class FinancialMovementEngine {
       ..sort((a, b) => a.purchaseDate.compareTo(b.purchaseDate));
     if (matured.isEmpty) return state;
 
-    var available = state.availableCents;
     final updatedMovements = List<FinancialMovement>.from(state.movements);
     for (final tx in matured) {
-      final newMovements = _movementsForImmediate(tx, available);
-      for (final m in newMovements) {
-        available += Ledger.effectOf(m).available;
-      }
-      updatedMovements.addAll(newMovements);
+      updatedMovements.addAll(_movementsForImmediate(tx));
     }
 
     return state.copyWith(movements: updatedMovements);
@@ -742,7 +671,7 @@ class FinancialMovementEngine {
     required int year,
     int pendingInboxCount = 0,
   }) {
-    final balances = calculateHistoricalBalancesCents(state: state, month: month, year: year);
+    final balance = calculateHistoricalBalanceCents(state: state, month: month, year: year);
     bool inPeriod(DateTime d) => d.month == month && d.year == year;
 
     final committed = state.invoices
@@ -788,8 +717,7 @@ class FinancialMovementEngine {
     }
 
     return DashboardSummary(
-      availableCents: balances.available,
-      reserveCents: balances.reserve,
+      availableCents: balance,
       committedCents: committed,
       pendingReimbursementsCents: reimbSummary.monthDueCents,
       totalPendingReimbursementsCents: reimbSummary.totalPendingCents,

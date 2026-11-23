@@ -325,7 +325,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   void _showInitialBalancesDialog() {
     final state = widget.notifier.state;
     final now = DateTime.now();
-    final (currentAvail, _) = FinancialMovementEngine.calculateHistoricalBalances(
+    final currentAvail = FinancialMovementEngine.calculateHistoricalBalance(
       state: state,
       month: now.month,
       year: now.year,

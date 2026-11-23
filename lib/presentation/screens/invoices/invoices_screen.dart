@@ -392,7 +392,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
         builder: (ctx, setSheet) {
           final amount = partial ? (CurrencyUtils.parseCents(amountCtrl.text) ?? 0) : inv.totalAmountCents;
           final available = math.max(0, notifier.state.availableCents);
-          final fromReserve = amount - available;
+          final missing = amount - available;
 
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -456,10 +456,10 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                         ),
                       ),
                     ),
-                    if (amount > 0 && fromReserve > 0) ...[
+                    if (amount > 0 && missing > 0) ...[
                       const SizedBox(height: 12),
                       Text(
-                        'O saldo disponível não cobre tudo: ${CurrencyUtils.formatCents(fromReserve)} sairão da Caixinha.',
+                        'O saldo disponível não cobre tudo: faltam ${CurrencyUtils.formatCents(missing)} e o saldo vai ficar negativo.',
                         style: Sumi.caption.copyWith(color: AppColors.textPrimary),
                       ),
                     ],

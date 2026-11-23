@@ -43,7 +43,6 @@ FinancialState _sampleState() {
   final ana = Person(id: 'p_ana', name: 'Ana', createdAt: DateTime(2026, 1, 1));
 
   var state = FinancialState.reconciled(
-    reserveCents: 120000,
     cards: const [nubank, inter],
     people: [Person(id: 'ME', name: 'Eu', createdAt: DateTime(2026, 1, 1)), ana],
     openingDate: DateTime(now.year, now.month - 2, 1),
