@@ -71,24 +71,7 @@ class UpdateService {
     return false;
   }
 
-  Future<String?> getEffectiveToken() async {
-    final stored = await repository.getSetting('github_token');
-    return (stored != null && stored.trim().isNotEmpty) ? stored.trim() : null;
-  }
-
-  Future<void> saveGithubToken(String token) async {
-    await repository.setSetting('github_token', token.trim());
-  }
-
-  Future<AppUpdateInfo> checkForUpdates({String? customToken}) async {
-    final token = customToken ?? await getEffectiveToken();
-    if (token == null || token.isEmpty) {
-      return AppUpdateInfo.error(
-        currentVersion: currentVersion,
-        message: 'Informe um token do GitHub em Ajustes › Token do GitHub para procurar atualizações.',
-      );
-    }
-
+  Future<AppUpdateInfo> checkForUpdates() async {
     final uri = Uri.parse('https://api.github.com/repos/$repoOwner/$repoName/releases/latest');
 
     HttpClient? client;
@@ -99,8 +82,6 @@ class UpdateService {
       final request = await client.getUrl(uri);
       request.headers.set('User-Agent', 'ChokinApp/$currentVersion');
       request.headers.set('Accept', 'application/vnd.github.v3+json');
-
-      request.headers.set('Authorization', 'Bearer $token');
 
       final response = await request.close();
 

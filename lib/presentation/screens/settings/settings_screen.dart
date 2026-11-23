@@ -244,13 +244,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 title: 'Verificar atualizações',
                 subtitle: 'Procura uma versão nova no GitHub',
                 value: 'v${UpdateService.currentVersion}',
-                onTap: _checkUpdatesManually,
-              ),
-              _SettingsRow(
-                title: 'Token do GitHub',
-                subtitle: 'Usado para consultar as versões do repositório',
                 isLast: true,
-                onTap: _showGithubTokenDialog,
+                onTap: _checkUpdatesManually,
               ),
               const SizedBox(height: 32),
               const Row(
@@ -1092,10 +1087,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Falha ao checar atualizações: ${info.errorMessage}'),
-          action: SnackBarAction(
-            label: 'Configurar Token',
-            onPressed: _showGithubTokenDialog,
-          ),
         ),
       );
     } else {
@@ -1125,59 +1116,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         ),
       );
     }
-  }
-
-  void _showGithubTokenDialog() async {
-    final currentToken = await widget.notifier.updateService.getEffectiveToken() ?? '';
-    final tokenCtrl = TextEditingController(text: currentToken);
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Token GitHub (Repositório Privado)',
-            style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Como o repositório é privado, um token de acesso pessoal (Personal Access Token) é necessário para consultar as releases do app.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: tokenCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Personal Access Token',
-                hintText: 'gho_...',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final token = tokenCtrl.text.trim();
-              await widget.notifier.updateService.saveGithubToken(token);
-              if (ctx.mounted) Navigator.of(ctx).pop();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Token do GitHub salvo com sucesso.')),
-                );
-              }
-            },
-            child: const Text('Salvar'),
-          ),
-        ],
-      ),
-    );
   }
 }
 
