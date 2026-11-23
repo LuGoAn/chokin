@@ -12,6 +12,7 @@ import '../../widgets/sumi_widgets.dart';
 import '../inbox/inbox_screen.dart';
 import '../invoices/invoices_screen.dart';
 import '../reimbursements/reimbursements_screen.dart';
+import '../settings/balance_dialog.dart';
 import '../transactions/transaction_history_screen.dart';
 import '../../../services/update_service.dart';
 import '../../state/financial_state_notifier.dart';
@@ -66,6 +67,10 @@ class DashboardScreen extends StatelessWidget {
               if (notifier.availableUpdate?.hasUpdate == true) ...[
                 const SizedBox(height: 16),
                 _buildUpdateBanner(context, notifier.availableUpdate!, notifier),
+              ],
+              if (notifier.showBalanceHint) ...[
+                const SizedBox(height: 16),
+                _buildBalanceHint(context),
               ],
               if (notifier.inbox.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -188,6 +193,39 @@ class DashboardScreen extends StatelessWidget {
           showBottomBorder: true,
         ),
       ],
+    );
+  }
+
+  Widget _buildBalanceHint(BuildContext context) {
+    return InkWell(
+      onTap: () => showBalanceDialog(context, notifier),
+      borderRadius: BorderRadius.circular(Sumi.radius),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.only(left: 14, top: 4, bottom: 4),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.borderStrong),
+          borderRadius: BorderRadius.circular(Sumi.radius),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text('Já tem dinheiro guardado? Toque aqui e informe seu saldo atual.', style: Sumi.body),
+            ),
+            IconButton(
+              tooltip: 'Dispensar',
+              icon: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
+              onPressed: notifier.dismissBalanceHint,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

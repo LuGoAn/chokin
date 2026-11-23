@@ -12,8 +12,8 @@ import '../../../data/export/csv_export_service.dart';
 import '../../widgets/sumi_widgets.dart';
 import '../categories/categories_management_screen.dart';
 import '../people/people_management_screen.dart';
+import 'balance_dialog.dart';
 import 'reader_diagnostics_screen.dart';
-import '../../../domain/engine/financial_movement_engine.dart';
 import '../../../services/update_service.dart';
 import '../../state/financial_state_notifier.dart';
 
@@ -119,7 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 title: 'Ajustar saldo disponível',
                 subtitle: 'A diferença fica registrada como ajuste',
                 value: CurrencyUtils.formatCents(state.availableCents),
-                onTap: _showInitialBalancesDialog,
+                onTap: () => showBalanceDialog(context, widget.notifier),
               ),
               _SettingsRow(
                 title: 'Pessoas',
@@ -319,52 +319,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           ),
         ),
       ],
-    );
-  }
-
-  void _showInitialBalancesDialog() {
-    final state = widget.notifier.state;
-    final now = DateTime.now();
-    final currentAvail = FinancialMovementEngine.calculateHistoricalBalance(
-      state: state,
-      month: now.month,
-      year: now.year,
-    );
-    final saldoCtrl = TextEditingController(text: currentAvail.toStringAsFixed(2).replaceAll('.', ','));
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: const Text('Definir Saldo Inicial', style: TextStyle(color: AppColors.textPrimary)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: saldoCtrl,
-                keyboardType: TextInputType.number,
-                inputFormatters: [CurrencyTextInputFormatter()],
-                decoration: const InputDecoration(labelText: 'Saldo disponível hoje (R\$)', prefixText: 'R\$ '),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-            ElevatedButton(
-              onPressed: () {
-                final saldo = CurrencyUtils.parseCents(saldoCtrl.text) ?? 0;
-                widget.notifier.setInitialBalances(availableCents: saldo);
-                Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Saldo atualizado! A diferença ficou registrada como ajuste.')),
-                );
-              },
-              child: const Text('Salvar'),
-            ),
-          ],
-        );
-      },
     );
   }
 

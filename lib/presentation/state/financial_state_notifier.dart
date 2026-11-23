@@ -32,6 +32,7 @@ class FinancialStateNotifier extends ChangeNotifier {
   int _selectedMonth = DateTime.now().month;
   int _selectedYear = DateTime.now().year;
   AppUpdateInfo? _availableUpdate;
+  bool _balanceHintDismissed = true;
 
   FinancialStateNotifier({
     FinancialRepository? repository,
@@ -50,6 +51,9 @@ class FinancialStateNotifier extends ChangeNotifier {
   int get selectedMonth => _selectedMonth;
   int get selectedYear => _selectedYear;
   AppUpdateInfo? get availableUpdate => _availableUpdate;
+
+  // só aparece enquanto o app está vazio: sem saldo nem lançamento nenhum
+  bool get showBalanceHint => !_balanceHintDismissed && _state.movements.isEmpty && _state.transactions.isEmpty;
 
   DashboardSummary get dashboardSummary => FinancialMovementEngine.calculateDashboardSummary(
         state: _state,
@@ -76,6 +80,7 @@ class FinancialStateNotifier extends ChangeNotifier {
     _state = await repository.loadFinancialState();
     _categories = await repository.getCategories();
     _inbox = await repository.getInboxNotifications();
+    _balanceHintDismissed = await repository.getSetting('balance_hint_dismissed') == '1';
 
     notificationBridge.initialize();
     _notifSubscription?.cancel();
@@ -541,6 +546,12 @@ class FinancialStateNotifier extends ChangeNotifier {
     } catch (_) {
       return AppUpdateInfo.noUpdate(UpdateService.currentVersion);
     }
+  }
+
+  Future<void> dismissBalanceHint() async {
+    _balanceHintDismissed = true;
+    notifyListeners();
+    await repository.setSetting('balance_hint_dismissed', '1');
   }
 
   void dismissUpdateNotification() {
